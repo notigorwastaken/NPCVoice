@@ -1,5 +1,15 @@
 # NPCVoice
 
+[![Modrinth Downloads](https://img.shields.io/modrinth/dt/npcvoice?logo=modrinth&color=00AF5C)](https://modrinth.com/plugin/npcvoice)
+[![Modrinth Version](https://img.shields.io/modrinth/v/npcvoice?logo=modrinth)](https://modrinth.com/plugin/npcvoice)
+[![GitHub Release](https://img.shields.io/github/v/release/notigorwastaken/NPCVoice?logo=github)](https://github.com/notigorwastaken/NPCVoice/releases)
+[![License](https://img.shields.io/github/license/notigorwastaken/NPCVoice)](https://github.com/notigorwastaken/NPCVoice/blob/master/LICENSE)
+[![Java](https://img.shields.io/badge/Java-21-orange?logo=openjdk)](https://adoptium.net/)
+[![Paper](https://img.shields.io/badge/Paper-1.21+-white?logo=minecraft)](https://papermc.io/)
+[![GitHub Stars](https://img.shields.io/github/stars/notigorwastaken/NPCVoice?style=social)](https://github.com/notigorwastaken/NPCVoice/stargazers)
+[![GitHub Issues](https://img.shields.io/github/issues/notigorwastaken/NPCVoice)](https://github.com/notigorwastaken/NPCVoice/issues)
+[![GitHub Downloads](https://img.shields.io/github/downloads/notigorwastaken/NPCVoice/total)](https://github.com/notigorwastaken/NPCVoice/releases)
+
 A Minecraft plugin that gives **Citizens NPCs** realistic voices using **Simple Voice Chat**.
 
 NPCVoice allows NPCs to speak through AI-generated voices or pre-recorded audio, creating immersive roleplay experiences, quests, tutorials, and interactive servers.
@@ -87,9 +97,9 @@ Alias:
 ## Video Examples
 
 ### Basic Usage
+<video src="https://i.snipp.gg/4918533360320604/bcff722a4ba1c42097b89030abc988cc.mp4" poster="https://i.snipp.gg/4918533360320604/thumb/055853aba41332ee39d8272856066105.jpg"></video>
 
 ### Custom Audio
-
 <video src="https://i.snipp.gg/4918533360320604/421a6baee2344daa0b39404540c749d2.mp4" poster="https://i.snipp.gg/4918533360320604/thumb/b70d5867395c819b5e888eca9aabb59d.jpg"></video>
 
 ---
