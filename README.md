@@ -86,21 +86,11 @@ Alias:
 
 ## Video Examples
 
-Place your recordings here.
-
 ### Basic Usage
-
-https://github.com/USER/REPO/assets/example1.mp4
-
-### AI Voice
-
-https://github.com/USER/REPO/assets/example2.mp4
 
 ### Custom Audio
 
-https://github.com/USER/REPO/assets/example3.mp4
-
-> Replace the links above with your uploaded GitHub videos. GitHub plays `.mp4` files directly inside the README.
+<video src="https://i.snipp.gg/4918533360320604/421a6baee2344daa0b39404540c749d2.mp4" poster="https://i.snipp.gg/4918533360320604/thumb/b70d5867395c819b5e888eca9aabb59d.jpg"></video>
 
 ---
 
