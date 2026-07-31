@@ -92,18 +92,6 @@ Alias:
 
 ---
 
-# Demo
-
-## Video Examples
-
-### Basic Usage
-<video src="https://i.snipp.gg/4918533360320604/bcff722a4ba1c42097b89030abc988cc.mp4" poster="https://i.snipp.gg/4918533360320604/thumb/055853aba41332ee39d8272856066105.jpg"></video>
-
-### Custom Audio
-<video src="https://i.snipp.gg/4918533360320604/421a6baee2344daa0b39404540c749d2.mp4" poster="https://i.snipp.gg/4918533360320604/thumb/b70d5867395c819b5e888eca9aabb59d.jpg"></video>
-
----
-
 ## Configuration
 
 NPCVoice supports multiple voice providers.
