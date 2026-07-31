@@ -122,6 +122,7 @@ NPCVoiceAPI api = NPCVoicePlugin.getAPI();
 - [ ] More TTS providers
 - [ ] GUI editor
 - [ ] Per-NPC voice settings
+- [ ] Speak-to-speak feature
 
 ---
 
