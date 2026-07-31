@@ -1,0 +1,55 @@
+tts:
+  provider: piper
+  piper:
+    executable: piper
+    model: en_US-lessac-medium
+    url: "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx"
+  elevenlabs:
+    api_key: ""
+    model: eleven_multilingual_v2
+    api_url: "https://api.elevenlabs.io/v1/text-to-speech"
+  openai:
+    api_key: ""
+    model: tts-1
+    voice: alloy
+    api_url: "https://api.openai.com/v1/audio/speech"
+  edgetts:
+    voice: en-US-JennyNeural
+    rate: 0
+    volume: 0
+    pitch: 0
+
+audio:
+  enabled: true
+  max_cached_files: 50
+
+voices:
+  default: narrator
+  presets:
+    narrator: en_US-lessac-medium
+
+voicechat:
+  distance: 20
+  volume: 1.0
+
+nameplate:
+  speaking_icon:
+    enabled: true
+    # Shown while the NPC speaks: next to the name for non-player NPCs, and as a
+    # floating hologram for player-type NPCs (renaming player NPCs makes Citizens
+    # despawn/respawn them, so their name is never touched). Empty string disables it.
+    # If it renders as a box (□), your client lacks that glyph - use a vanilla
+    # safe symbol instead, e.g. "»", "♪" or "✦".
+    icon: "🗨"
+
+cache:
+  enabled: true
+  max_size_mb: 500
+
+dialogue:
+  default_cooldown: 3
+  default_approach_radius: 6
+
+debug: false
+
+npcs: {}

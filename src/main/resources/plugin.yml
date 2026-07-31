@@ -1,0 +1,37 @@
+name: NPCVoice
+version: '${version}'
+main: com.npcvoice.NPCVoicePlugin
+api-version: '1.21'
+author: NPCVoice Team
+description: NPC voice system using Simple Voice Chat
+depend:
+  - Citizens
+  - voicechat
+softdepend:
+  - PlaceholderAPI
+  - WorldGuard
+  - LuckPerms
+commands:
+  npcvoice:
+    description: Main NPCVoice command
+    usage: /npcvoice <reload|speak|stop|cache|debug|audio>
+    aliases: [nv]
+permissions:
+  npcvoice.reload:
+    description: Reload the NPCVoice config
+    default: op
+  npcvoice.speak:
+    description: Make an NPC speak
+    default: op
+  npcvoice.cache.clear:
+    description: Clear the audio cache
+    default: op
+  npcvoice.debug:
+    description: Toggle debug mode
+    default: op
+  npcvoice.audio.list:
+    description: List available audio files
+    default: op
+  npcvoice.audio.play:
+    description: Play an audio file on an NPC
+    default: op
