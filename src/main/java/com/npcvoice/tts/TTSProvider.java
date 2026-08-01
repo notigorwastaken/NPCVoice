@@ -9,4 +9,8 @@ public interface TTSProvider {
     @NotNull String name();
 
     boolean isAvailable();
+
+    default boolean supportsStreaming() {
+        return false;
+    }
 }

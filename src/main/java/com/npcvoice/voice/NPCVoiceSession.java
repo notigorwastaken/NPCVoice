@@ -17,6 +17,7 @@ public final class NPCVoiceSession {
     private volatile long lastSpeechTime;
     private volatile int currentSpeechIndex;
     private volatile boolean interrupted;
+    private volatile long speechGeneration;
 
     public NPCVoiceSession(@NotNull NPC npc) {
         this.npc = npc;
@@ -68,4 +69,12 @@ public final class NPCVoiceSession {
     public void interrupt() { this.interrupted = true; speaking.set(false); }
 
     public void resetInterrupted() { this.interrupted = false; }
+
+    public long speechGeneration() {
+        return speechGeneration;
+    }
+
+    public void incrementSpeechGeneration() {
+        this.speechGeneration++;
+    }
 }

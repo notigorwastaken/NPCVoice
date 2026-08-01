@@ -3,6 +3,7 @@ package com.npcvoice.tts;
 import com.npcvoice.NPCVoicePlugin;
 import com.npcvoice.config.ConfigManager;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Map;
 import java.util.Optional;
@@ -27,6 +28,9 @@ public final class TTSManager {
         registerProvider(new ElevenLabsTTS(configManager));
         registerProvider(new OpenAITTS(configManager));
         registerProvider(new EdgeTTS(configManager));
+        registerProvider(new GoogleTTS(configManager));
+        registerProvider(new AzureTTS(configManager));
+        registerProvider(new GttsTTS(configManager));
 
         String providerName = configManager.ttsProvider();
         TTSProvider provider = providers.get(providerName.toLowerCase());
@@ -51,14 +55,18 @@ public final class TTSManager {
     }
 
     public CompletableFuture<byte[]> generateSpeechAsync(@NotNull String text, @NotNull String voice) {
+        return generateSpeechAsync(text, voice, activeProvider);
+    }
+
+    public CompletableFuture<byte[]> generateSpeechAsync(@NotNull String text, @NotNull String voice, @Nullable TTSProvider provider) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                if (activeProvider == null || !activeProvider.isAvailable()) {
+                if (provider == null || !provider.isAvailable()) {
                     plugin.getLogger().warning("No active TTS provider available.");
                     return null;
                 }
 
-                return activeProvider.generateSpeech(text, voice);
+                return provider.generateSpeech(text, voice);
             } catch (Exception e) {
                 plugin.getLogger().log(Level.SEVERE, "Failed to generate speech for: " + text, e);
                 return null;

@@ -14,7 +14,7 @@ softdepend:
 commands:
   npcvoice:
     description: Main NPCVoice command
-    usage: /npcvoice <reload|speak|stop|cache|debug|audio>
+    usage: /npcvoice <reload|speak|stop|cache|debug|audio|gui>
     aliases: [nv]
 permissions:
   npcvoice.reload:
@@ -34,4 +34,7 @@ permissions:
     default: op
   npcvoice.audio.play:
     description: Play an audio file on an NPC
+    default: op
+  npcvoice.gui:
+    description: Open the NPCVoice editor GUI
     default: op

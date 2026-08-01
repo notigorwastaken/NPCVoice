@@ -6,13 +6,16 @@ import com.npcvoice.cache.AudioCache;
 import com.npcvoice.commands.NPCVoiceCommand;
 import com.npcvoice.config.ConfigManager;
 import com.npcvoice.dialogue.DialogueManager;
+import com.npcvoice.gui.NPCEditorGUI;
 import com.npcvoice.listeners.NPCListener;
+import com.npcvoice.s2s.S2SManager;
+import com.npcvoice.stt.STTManager;
 import com.npcvoice.tts.TTSManager;
 import com.npcvoice.util.PlaceholderUtil;
 import com.npcvoice.voice.VoiceManager;
 import de.maxhenkel.voicechat.api.BukkitVoicechatService;
-import de.maxhenkel.voicechat.api.VoicechatServerApi;
 import de.maxhenkel.voicechat.api.VoicechatPlugin;
+import de.maxhenkel.voicechat.api.VoicechatServerApi;
 import de.maxhenkel.voicechat.api.events.EventRegistration;
 import de.maxhenkel.voicechat.api.events.VoicechatServerStartedEvent;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -26,6 +29,9 @@ public final class NPCVoicePlugin extends JavaPlugin implements VoicechatPlugin 
     private AudioFileManager audioFileManager;
     private VoiceManager voiceManager;
     private DialogueManager dialogueManager;
+    private STTManager sttManager;
+    private S2SManager s2sManager;
+    private NPCEditorGUI gui;
     private PlaceholderUtil placeholderUtil;
     private NPCVoiceCommand command;
     private NPCListener listener;
@@ -50,9 +56,14 @@ public final class NPCVoicePlugin extends JavaPlugin implements VoicechatPlugin 
 
         voiceManager = new VoiceManager(this, configManager, ttsManager, audioCache, audioFileManager);
 
+        sttManager = new STTManager(this, configManager);
+
         placeholderUtil = new PlaceholderUtil(this);
 
         dialogueManager = new DialogueManager(this, configManager, voiceManager, placeholderUtil);
+
+        s2sManager = new S2SManager(this, configManager, voiceManager, sttManager);
+        getServer().getPluginManager().registerEvents(s2sManager, this);
 
         command = new NPCVoiceCommand(this, voiceManager, dialogueManager, audioCache, audioFileManager);
         getCommand("npcvoice").setExecutor(command);
@@ -61,7 +72,11 @@ public final class NPCVoicePlugin extends JavaPlugin implements VoicechatPlugin 
         listener = new NPCListener(this, voiceManager, dialogueManager);
         getServer().getPluginManager().registerEvents(listener, this);
 
-        NPCVoiceAPI.initialize(voiceManager, dialogueManager);
+        gui = new NPCEditorGUI(this, configManager, ttsManager, voiceManager, audioCache);
+        getServer().getPluginManager().registerEvents(gui, this);
+        command.setGui(gui);
+
+        NPCVoiceAPI.initialize(voiceManager, dialogueManager, configManager, ttsManager);
 
         BukkitVoicechatService service = getServer().getServicesManager().load(BukkitVoicechatService.class);
         if (service != null) {
@@ -77,6 +92,7 @@ public final class NPCVoicePlugin extends JavaPlugin implements VoicechatPlugin 
 
     @Override
     public void onDisable() {
+        if (s2sManager != null) s2sManager.shutdown();
         if (voiceManager != null) voiceManager.shutdown();
         if (ttsManager != null) ttsManager.shutdown();
         if (audioCache != null) audioCache.shutdown();
@@ -110,6 +126,7 @@ public final class NPCVoicePlugin extends JavaPlugin implements VoicechatPlugin 
     private void onVoiceChatServerStarted(VoicechatServerStartedEvent event) {
         this.voicechatApi = event.getVoicechat();
         voiceManager.initialize(voicechatApi);
+        s2sManager.initialize(voicechatApi);
         getLogger().info("VoiceChat server started. Voice system initialized.");
     }
 

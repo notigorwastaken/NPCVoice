@@ -19,10 +19,15 @@ NPCVoice allows NPCs to speak through AI-generated voices or pre-recorded audio,
 ## ✨ Features
 
 - 🎙️ AI Text-to-Speech (TTS)
+- ⚡ Streaming TTS (starts speaking while audio is still being generated)
+- 🔤 Multiple TTS providers (Piper, OpenAI, ElevenLabs, Edge, Google Cloud, Azure, gTTS)
 - 🔊 Play custom audio files
 - 👤 Citizens NPC integration
+- 🎚️ Per-NPC voice & provider settings (config + in-game GUI)
+- 🖥️ In-game GUI editor
+- 🗣️ Speak-to-speak (players talk to NPCs, NPCs reply with TTS)
 - 🎧 Native Simple Voice Chat support
-- ⚡ Audio cache for better performance
+- 💾 Audio cache for better performance
 - 🔄 Reload configuration without restarting
 - 🛠️ Developer API
 - 🌍 PlaceholderAPI support
@@ -62,14 +67,15 @@ Optional:
 
 ## Commands
 
-| Command | Description |
-|----------|-------------|
-| `/npcvoice reload` | Reload the configuration |
-| `/npcvoice speak` | Make an NPC speak |
-| `/npcvoice stop` | Stop the current audio |
-| `/npcvoice cache` | Manage audio cache |
-| `/npcvoice debug` | Toggle debug mode |
-| `/npcvoice audio` | Audio management |
+| Command            | Description                 |
+|--------------------|-----------------------------|
+| `/npcvoice reload` | Reload the configuration    |
+| `/npcvoice speak`  | Make an NPC speak           |
+| `/npcvoice stop`   | Stop the current audio      |
+| `/npcvoice cache`  | Manage audio cache          |
+| `/npcvoice debug`  | Toggle debug mode           |
+| `/npcvoice audio`  | Audio management            |
+| `/npcvoice gui`    | Open the in-game editor GUI |
 
 Alias:
 
@@ -81,14 +87,15 @@ Alias:
 
 ## Permissions
 
-| Permission | Description |
-|------------|-------------|
-| `npcvoice.reload` | Reload plugin |
-| `npcvoice.speak` | Make NPCs speak |
-| `npcvoice.cache.clear` | Clear cache |
-| `npcvoice.debug` | Debug mode |
-| `npcvoice.audio.list` | List audio files |
-| `npcvoice.audio.play` | Play audio files |
+| Permission             | Description         |
+|------------------------|---------------------|
+| `npcvoice.reload`      | Reload plugin       |
+| `npcvoice.speak`       | Make NPCs speak     |
+| `npcvoice.cache.clear` | Clear cache         |
+| `npcvoice.debug`       | Debug mode          |
+| `npcvoice.audio.list`  | List audio files    |
+| `npcvoice.audio.play`  | Play audio files    |
+| `npcvoice.gui`         | Open the editor GUI |
 
 ---
 
@@ -101,8 +108,42 @@ Examples include:
 - Edge TTS
 - OpenAI TTS
 - ElevenLabs
+- Google Cloud TTS
+- Azure (Microsoft) TTS
+- gTTS
+- Piper (local, default)
 
 Configuration is done through `config.yml`.
+
+Each NPC can override the global provider and voice:
+
+```yaml
+npcs:
+  my_npc:
+    id: 123
+    voice: narrator
+    provider: openai
+    stt_enabled: true
+```
+
+### Streaming TTS
+
+Set `tts.streaming: true` to start playback while the audio is still being generated. Streaming is used automatically
+when the active provider supports it (`openai`, `elevenlabs`, `azure`).
+
+### Speak-to-speak
+
+Enable `speak_to_speak.enabled: true` and configure a speech-to-text provider under `stt`:
+
+```yaml
+stt:
+  provider: openai
+  openai:
+    api_key: "your-key"
+```
+
+While a player talks near an NPC (that has `stt_enabled`), their speech is transcribed and the NPC replies with
+generated TTS audio.
 
 ---
 
@@ -111,18 +152,23 @@ Configuration is done through `config.yml`.
 Developers can use the built-in API to trigger NPC speech programmatically.
 
 ```java
-NPCVoiceAPI api = NPCVoicePlugin.getAPI();
+NPCVoiceAPI.speak(npc, "Hello there!");
+NPCVoiceAPI.
+
+speak(npc, "Hello there!","narrator");
 ```
 
----
+Per-NPC settings can be edited at runtime:
 
-## Planned Features
+```java
+NPCVoiceAPI.setNpcVoice("my_npc","narrator");
+NPCVoiceAPI.
 
-- [ ] Streaming TTS
-- [ ] More TTS providers
-- [ ] GUI editor
-- [ ] Per-NPC voice settings
-- [ ] Speak-to-speak feature
+setNpcProvider("my_npc","openai");
+NPCVoiceAPI.
+
+saveNpcs();
+```
 
 ---
 

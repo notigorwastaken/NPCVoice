@@ -1,17 +1,15 @@
 package com.npcvoice.util;
 
-import javazoom.jl.decoder.Bitstream;
-import javazoom.jl.decoder.Decoder;
-import javazoom.jl.decoder.Header;
-import javazoom.jl.decoder.JavaLayerException;
-import javazoom.jl.decoder.Obuffer;
+import javazoom.jl.decoder.*;
 
 import java.io.ByteArrayInputStream;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.BiConsumer;
 
 public final class AudioConverter {
 
@@ -100,6 +98,46 @@ public final class AudioConverter {
         }
     }
 
+    /**
+     * Decodes an MP3 stream frame by frame, delivering mono PCM samples for each
+     * decoded frame together with the frame's output frequency. The input stream
+     * may be a blocking stream fed incrementally.
+     */
+    public static void decodeMp3Streaming(
+            InputStream in,
+            BiConsumer<short[], Integer> frameConsumer
+    ) throws JavaLayerException {
+        Bitstream bitstream = new Bitstream(in);
+        Decoder decoder = new Decoder();
+        SampleBuffer buffer = new SampleBuffer();
+        decoder.setOutputBuffer(buffer);
+
+        Header header;
+        while ((header = bitstream.readFrame()) != null) {
+            int sampleRate = decoder.getOutputFrequency();
+            decoder.decodeFrame(header, bitstream);
+            bitstream.closeFrame();
+
+            short[] pcm = buffer.getSamples();
+            int channels = decoder.getOutputChannels();
+            int samplesPerChannel = pcm.length / channels;
+
+            short[] mono = new short[samplesPerChannel];
+            for (int i = 0; i < samplesPerChannel; i++) {
+                long sum = 0;
+                for (int ch = 0; ch < channels; ch++) {
+                    sum += pcm[ch * samplesPerChannel + i];
+                }
+                mono[i] = (short) (sum / channels);
+            }
+
+            frameConsumer.accept(mono, sampleRate);
+            buffer.reset();
+        }
+
+        bitstream.close();
+    }
+
     public static short[] resamplePcm(byte[] pcmBytes, int inputRate) {
         if (pcmBytes == null || pcmBytes.length == 0) return new short[0];
         short[] rawSamples = bytesToShortsRaw(pcmBytes);
@@ -168,7 +206,7 @@ public final class AudioConverter {
         return samples;
     }
 
-    private static short[] resample(short[] input, int inputRate, int outputRate) {
+    public static short[] resample(short[] input, int inputRate, int outputRate) {
         if (inputRate == outputRate) return input;
 
         int outputLength = (int) ((long) input.length * outputRate / inputRate);
@@ -190,23 +228,12 @@ public final class AudioConverter {
         return output;
     }
 
-    private static final class WavInfo {
-        final int channels;
-        final int sampleRate;
-        final int bitsPerSample;
-        final int dataOffset;
-
-        WavInfo(int channels, int sampleRate, int bitsPerSample, int dataOffset) {
-            this.channels = channels;
-            this.sampleRate = sampleRate;
-            this.bitsPerSample = bitsPerSample;
-            this.dataOffset = dataOffset;
-        }
+    private record WavInfo(int channels, int sampleRate, int bitsPerSample, int dataOffset) {
     }
 
-    private static final class SampleBuffer extends Obuffer {
+    static final class SampleBuffer extends Obuffer {
         private short[] buffer;
-        private int[] bitPosition;
+        private final int[] bitPosition;
 
         SampleBuffer() {
             buffer = new short[4096];

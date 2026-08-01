@@ -6,7 +6,8 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
-import java.nio.file.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
@@ -39,10 +40,10 @@ public final class AudioCache {
     }
 
     @Nullable
-    public byte[] get(@NotNull String text, @NotNull String voice) {
+    public byte[] get(@NotNull String text, @NotNull String voice, @NotNull String provider) {
         if (!enabled) return null;
         try {
-            Path cacheFile = cachePath(text, voice);
+            Path cacheFile = cachePath(text, voice, provider);
             if (Files.exists(cacheFile)) {
                 return Files.readAllBytes(cacheFile);
             }
@@ -52,10 +53,10 @@ public final class AudioCache {
         return null;
     }
 
-    public void put(@NotNull String text, @NotNull String voice, byte @NotNull [] audioData) {
+    public void put(@NotNull String text, @NotNull String voice, @NotNull String provider, byte @NotNull [] audioData) {
         if (!enabled || audioData == null || audioData.length == 0) return;
         try {
-            Path cacheFile = cachePath(text, voice);
+            Path cacheFile = cachePath(text, voice, provider);
             Files.write(cacheFile, audioData);
         } catch (IOException e) {
             plugin.getLogger().log(Level.WARNING, "Failed to write cache for: " + text, e);
@@ -65,20 +66,21 @@ public final class AudioCache {
     public CompletableFuture<byte[]> getOrGenerateAsync(
             @NotNull String text,
             @NotNull String voice,
+            @NotNull String provider,
             @NotNull Supplier<CompletableFuture<byte[]>> generator
     ) {
         if (!enabled) {
             return generator.get();
         }
 
-        byte[] cached = get(text, voice);
+        byte[] cached = get(text, voice, provider);
         if (cached != null) {
             return CompletableFuture.completedFuture(cached);
         }
 
         return generator.get().thenApply(audio -> {
             if (audio != null && audio.length > 0) {
-                put(text, voice, audio);
+                put(text, voice, provider, audio);
             }
             return audio;
         });
@@ -121,9 +123,10 @@ public final class AudioCache {
     }
 
     @NotNull
-    private Path cachePath(@NotNull String text, @NotNull String voice) {
+    private Path cachePath(@NotNull String text, @NotNull String voice, @NotNull String provider) {
         String hash = hashText(text);
-        return cacheDir.resolve(hash + "_" + voice.replaceAll("[^a-zA-Z0-9_-]", "_") + ".raw");
+        return cacheDir.resolve(hash + "_" + provider.replaceAll("[^a-zA-Z0-9_-]", "_") + "_"
+                + voice.replaceAll("[^a-zA-Z0-9_-]", "_") + ".raw");
     }
 
     @NotNull

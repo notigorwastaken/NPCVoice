@@ -6,11 +6,15 @@ import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Level;
 
 public final class ConfigManager {
 
@@ -20,6 +24,7 @@ public final class ConfigManager {
     private final Map<String, NPCConfig> npcConfigs = new ConcurrentHashMap<>();
 
     private String ttsProvider;
+    private boolean ttsStreaming;
     private String defaultVoice;
     private int voiceChatDistance;
     private double voiceChatVolume;
@@ -48,6 +53,37 @@ public final class ConfigManager {
     private int edgeTtsRate;
     private int edgeTtsVolume;
     private int edgeTtsPitch;
+
+    private String googleApiKey;
+    private String googleLanguageCode;
+    private String googleVoice;
+    private double googlePitch;
+    private double googleSpeed;
+
+    private String azureApiKey;
+    private String azureRegion;
+    private String azureVoice;
+    private String azurePitch;
+    private double azureSpeed;
+
+    private String gttsExecutable;
+    private String gttsLang;
+    private boolean gttsSlow;
+
+    private String sttProvider;
+    private String sttOpenaiApiKey;
+    private String sttOpenaiModel;
+    private String sttOpenaiUrl;
+    private String sttGoogleApiKey;
+    private String sttGoogleUrl;
+    private String sttGoogleLanguageCode;
+
+    private boolean s2sEnabled;
+    private int s2sRadius;
+    private int s2sCooldown;
+    private int s2sMaxAudioMs;
+    private int s2sMinSpeechMs;
+    private int s2sSilenceMs;
 
     private final Map<String, String> voicePresets = new ConcurrentHashMap<>();
 
@@ -81,6 +117,7 @@ public final class ConfigManager {
 
     private void loadSettings() {
         ttsProvider = config.getString("tts.provider", "piper");
+        ttsStreaming = config.getBoolean("tts.streaming", true);
         defaultVoice = config.getString("voices.default", "narrator");
         voiceChatDistance = config.getInt("voicechat.distance", 20);
         voiceChatVolume = Math.clamp(config.getDouble("voicechat.volume", 1.0), 0.0, 1.0);
@@ -110,6 +147,37 @@ public final class ConfigManager {
         edgeTtsRate = config.getInt("tts.edgetts.rate", 0);
         edgeTtsVolume = config.getInt("tts.edgetts.volume", 0);
         edgeTtsPitch = config.getInt("tts.edgetts.pitch", 0);
+
+        googleApiKey = config.getString("tts.google.api_key", "");
+        googleLanguageCode = config.getString("tts.google.language_code", "en-US");
+        googleVoice = config.getString("tts.google.voice", "en-US-Neural2-C");
+        googlePitch = config.getDouble("tts.google.pitch", 0);
+        googleSpeed = config.getDouble("tts.google.speed", 1.0);
+
+        azureApiKey = config.getString("tts.azure.api_key", "");
+        azureRegion = config.getString("tts.azure.region", "");
+        azureVoice = config.getString("tts.azure.voice", "en-US-JennyNeural");
+        azurePitch = config.getString("tts.azure.pitch", "+0Hz");
+        azureSpeed = config.getDouble("tts.azure.speed", 1.0);
+
+        gttsExecutable = config.getString("tts.gtts.executable", "gtts-cli");
+        gttsLang = config.getString("tts.gtts.lang", "en");
+        gttsSlow = config.getBoolean("tts.gtts.slow", false);
+
+        sttProvider = config.getString("stt.provider", "none");
+        sttOpenaiApiKey = config.getString("stt.openai.api_key", "");
+        sttOpenaiModel = config.getString("stt.openai.model", "whisper-1");
+        sttOpenaiUrl = config.getString("stt.openai.api_url", "https://api.openai.com/v1/audio/transcriptions");
+        sttGoogleApiKey = config.getString("stt.google.api_key", "");
+        sttGoogleUrl = config.getString("stt.google.api_url", "https://speech.googleapis.com/v1/speech:recognize");
+        sttGoogleLanguageCode = config.getString("stt.google.language_code", "en-US");
+
+        s2sEnabled = config.getBoolean("speak_to_speak.enabled", false);
+        s2sRadius = config.getInt("speak_to_speak.radius", 8);
+        s2sCooldown = config.getInt("speak_to_speak.cooldown", 10);
+        s2sMaxAudioMs = config.getInt("speak_to_speak.max_audio_ms", 10000);
+        s2sMinSpeechMs = config.getInt("speak_to_speak.min_speech_ms", 700);
+        s2sSilenceMs = config.getInt("speak_to_speak.silence_ms", 400);
     }
 
     private void loadNpcs() {
@@ -139,6 +207,10 @@ public final class ConfigManager {
     }
 
     public String ttsProvider() { return ttsProvider; }
+
+    public boolean ttsStreaming() {
+        return ttsStreaming;
+    }
     public String defaultVoice() { return defaultVoice; }
     public int voiceChatDistance() { return voiceChatDistance; }
     public double voiceChatVolume() { return voiceChatVolume; }
@@ -169,22 +241,182 @@ public final class ConfigManager {
     public int edgeTtsVolume() { return edgeTtsVolume; }
     public int edgeTtsPitch() { return edgeTtsPitch; }
 
+    public String googleApiKey() {
+        return googleApiKey;
+    }
+
+    public String googleLanguageCode() {
+        return googleLanguageCode;
+    }
+
+    public String googleVoice() {
+        return googleVoice;
+    }
+
+    public double googlePitch() {
+        return googlePitch;
+    }
+
+    public double googleSpeed() {
+        return googleSpeed;
+    }
+
+    public String azureApiKey() {
+        return azureApiKey;
+    }
+
+    public String azureRegion() {
+        return azureRegion;
+    }
+
+    public String azureVoice() {
+        return azureVoice;
+    }
+
+    public String azurePitch() {
+        return azurePitch;
+    }
+
+    public double azureSpeed() {
+        return azureSpeed;
+    }
+
+    public String gttsExecutable() {
+        return gttsExecutable;
+    }
+
+    public String gttsLang() {
+        return gttsLang;
+    }
+
+    public boolean gttsSlow() {
+        return gttsSlow;
+    }
+
+    public String sttProvider() {
+        return sttProvider;
+    }
+
+    public String sttOpenaiApiKey() {
+        return sttOpenaiApiKey;
+    }
+
+    public String sttOpenaiModel() {
+        return sttOpenaiModel;
+    }
+
+    public String sttOpenaiUrl() {
+        return sttOpenaiUrl;
+    }
+
+    public String sttGoogleApiKey() {
+        return sttGoogleApiKey;
+    }
+
+    public String sttGoogleUrl() {
+        return sttGoogleUrl;
+    }
+
+    public String sttGoogleLanguageCode() {
+        return sttGoogleLanguageCode;
+    }
+
+    public boolean s2sEnabled() {
+        return s2sEnabled;
+    }
+
+    public int s2sRadius() {
+        return s2sRadius;
+    }
+
+    public int s2sCooldown() {
+        return s2sCooldown;
+    }
+
+    public int s2sMaxAudioMs() {
+        return s2sMaxAudioMs;
+    }
+
+    public int s2sMinSpeechMs() {
+        return s2sMinSpeechMs;
+    }
+
+    public int s2sSilenceMs() {
+        return s2sSilenceMs;
+    }
+
     public NPCConfig npcConfig(String name) { return npcConfigs.get(name); }
+
+    public Optional<NPCConfig> npcConfigByNpcId(int npcId) {
+        return npcConfigs.values().stream()
+                .filter(cfg -> cfg.id() == npcId)
+                .findFirst();
+    }
+
     public Map<String, NPCConfig> allNpcConfigs() { return Map.copyOf(npcConfigs); }
     public Map<String, String> voicePresets() { return Map.copyOf(voicePresets); }
+
+    public void setNpcVoice(String name, String voice) {
+        NPCConfig npcConfig = npcConfigs.get(name);
+        if (npcConfig == null) return;
+        npcConfigs.put(name, npcConfig.withVoice(voice));
+    }
+
+    public void setNpcProvider(String name, String provider) {
+        NPCConfig npcConfig = npcConfigs.get(name);
+        if (npcConfig == null) return;
+        npcConfigs.put(name, npcConfig.withProvider(provider));
+    }
+
+    public void setNpcSttEnabled(String name, boolean enabled) {
+        NPCConfig npcConfig = npcConfigs.get(name);
+        if (npcConfig == null) return;
+        npcConfigs.put(name, npcConfig.withSttEnabled(enabled));
+    }
+
+    public void saveNpcs() {
+        ConfigurationSection npcsSection = config.getConfigurationSection("npcs");
+        if (npcsSection == null) {
+            npcsSection = config.createSection("npcs");
+        }
+
+        for (Map.Entry<String, NPCConfig> entry : npcConfigs.entrySet()) {
+            ConfigurationSection npcSection = npcsSection.getConfigurationSection(entry.getKey());
+            if (npcSection == null) {
+                npcSection = npcsSection.createSection(entry.getKey());
+            }
+            final ConfigurationSection section = npcSection;
+            NPCConfig npcConfig = entry.getValue();
+            section.set("id", npcConfig.id());
+            npcConfig.voice().ifPresentOrElse(v -> section.set("voice", v), () -> section.set("voice", null));
+            npcConfig.provider().ifPresentOrElse(p -> section.set("provider", p), () -> section.set("provider", null));
+            section.set("stt_enabled", npcConfig.sttEnabled());
+        }
+
+        try {
+            config.save(configFile);
+        } catch (IOException e) {
+            plugin.getLogger().log(Level.SEVERE, "Failed to save NPC config", e);
+        }
+    }
 
     public static final class NPCConfig {
 
         private final String name;
         private final int id;
         private final String voice;
+        private final String provider;
+        private final boolean sttEnabled;
         private final SpeechConfig click;
         private final SpeechConfig approach;
 
-        private NPCConfig(String name, int id, String voice, SpeechConfig click, SpeechConfig approach) {
+        private NPCConfig(String name, int id, String voice, String provider, boolean sttEnabled,
+                          SpeechConfig click, SpeechConfig approach) {
             this.name = name;
             this.id = id;
             this.voice = voice;
+            this.provider = provider;
+            this.sttEnabled = sttEnabled;
             this.click = click;
             this.approach = approach;
         }
@@ -194,16 +426,38 @@ public final class ConfigManager {
 
             int id = section.getInt("id", -1);
             String voice = section.getString("voice", null);
+            String provider = section.getString("provider", null);
+            boolean sttEnabled = section.getBoolean("stt_enabled", true);
 
             SpeechConfig click = SpeechConfig.fromConfig(section.getConfigurationSection("click"), "click");
             SpeechConfig approach = SpeechConfig.fromConfig(section.getConfigurationSection("approach"), "approach");
 
-            return new NPCConfig(name, id, voice, click, approach);
+            return new NPCConfig(name, id, voice, provider, sttEnabled, click, approach);
+        }
+
+        public NPCConfig withVoice(String voice) {
+            return new NPCConfig(name, id, voice, provider, sttEnabled, click, approach);
+        }
+
+        public NPCConfig withProvider(String provider) {
+            return new NPCConfig(name, id, voice, provider, sttEnabled, click, approach);
+        }
+
+        public NPCConfig withSttEnabled(boolean sttEnabled) {
+            return new NPCConfig(name, id, voice, provider, sttEnabled, click, approach);
         }
 
         public String name() { return name; }
         public int id() { return id; }
         public Optional<String> voice() { return Optional.ofNullable(voice); }
+
+        public Optional<String> provider() {
+            return Optional.ofNullable(provider);
+        }
+
+        public boolean sttEnabled() {
+            return sttEnabled;
+        }
         public Optional<SpeechConfig> click() { return Optional.ofNullable(click); }
         public Optional<SpeechConfig> approach() { return Optional.ofNullable(approach); }
     }

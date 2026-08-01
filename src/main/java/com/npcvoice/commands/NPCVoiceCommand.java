@@ -4,12 +4,16 @@ import com.npcvoice.NPCVoicePlugin;
 import com.npcvoice.audio.AudioFileManager;
 import com.npcvoice.cache.AudioCache;
 import com.npcvoice.dialogue.DialogueManager;
+import com.npcvoice.gui.NPCEditorGUI;
 import com.npcvoice.voice.VoiceManager;
 import net.citizensnpcs.api.CitizensAPI;
 import net.citizensnpcs.api.npc.NPC;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
-import org.bukkit.command.*;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandExecutor;
+import org.bukkit.command.CommandSender;
+import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
@@ -25,6 +29,7 @@ public final class NPCVoiceCommand implements CommandExecutor, TabCompleter {
     private final DialogueManager dialogueManager;
     private final AudioCache audioCache;
     private final AudioFileManager audioFileManager;
+    private NPCEditorGUI gui;
 
     public NPCVoiceCommand(
             NPCVoicePlugin plugin,
@@ -38,6 +43,10 @@ public final class NPCVoiceCommand implements CommandExecutor, TabCompleter {
         this.dialogueManager = dialogueManager;
         this.audioCache = audioCache;
         this.audioFileManager = audioFileManager;
+    }
+
+    public void setGui(NPCEditorGUI gui) {
+        this.gui = gui;
     }
 
     @Override
@@ -54,10 +63,27 @@ public final class NPCVoiceCommand implements CommandExecutor, TabCompleter {
             case "cache" -> handleCache(sender, args);
             case "debug" -> handleDebug(sender);
             case "audio" -> handleAudio(sender, args);
+            case "gui" -> handleGui(sender);
             default -> sendMessage(sender, Component.text("Unknown subcommand: " + args[0]).color(NamedTextColor.RED));
         }
 
         return true;
+    }
+
+    private void handleGui(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            sendMessage(sender, Component.text("This command must be run by a player.").color(NamedTextColor.RED));
+            return;
+        }
+        if (!sender.hasPermission("npcvoice.gui")) {
+            sendNoPermission(sender);
+            return;
+        }
+        if (gui == null) {
+            sendMessage(sender, Component.text("GUI is not initialized yet.").color(NamedTextColor.RED));
+            return;
+        }
+        gui.openMainMenu(player);
     }
 
     private void handleReload(CommandSender sender) {
@@ -247,7 +273,7 @@ public final class NPCVoiceCommand implements CommandExecutor, TabCompleter {
         List<String> completions = new ArrayList<>();
 
         if (args.length == 1) {
-            completions.addAll(List.of("reload", "speak", "stop", "cache", "debug", "audio"));
+            completions.addAll(List.of("reload", "speak", "stop", "cache", "debug", "audio", "gui"));
         } else if (args.length == 2 && args[0].equalsIgnoreCase("audio")) {
             completions.addAll(List.of("list", "play"));
         } else if (args.length == 2 && (args[0].equalsIgnoreCase("speak") || args[0].equalsIgnoreCase("stop"))) {

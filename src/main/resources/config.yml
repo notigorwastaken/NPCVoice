@@ -1,5 +1,8 @@
 tts:
   provider: piper
+  # Stream audio in chunks and start playback while it is still being generated.
+  # Only used when the active provider supports streaming (openai, elevenlabs, azure).
+  streaming: true
   piper:
     executable: piper
     model: en_US-lessac-medium
@@ -18,6 +21,42 @@ tts:
     rate: 0
     volume: 0
     pitch: 0
+  google:
+    api_key: ""
+    language_code: en-US
+    voice: en-US-Neural2-C
+    pitch: 0
+    speed: 1.0
+  azure:
+    api_key: ""
+    region: "" # e.g. eastus
+    voice: en-US-JennyNeural
+    pitch: "+0Hz"
+    speed: 1.0
+  gtts:
+    executable: gtts-cli
+    lang: en
+    slow: false
+
+stt:
+  provider: none # none | openai | google
+  openai:
+    api_key: ""
+    model: whisper-1
+    api_url: "https://api.openai.com/v1/audio/transcriptions"
+  google:
+    api_key: ""
+    api_url: "https://speech.googleapis.com/v1/speech:recognize"
+    language_code: en-US
+
+speak_to_speak:
+  # Player speaks near an NPC -> speech is transcribed (STT) and the NPC replies with TTS.
+  enabled: false
+  radius: 8
+  cooldown: 10
+  max_audio_ms: 10000
+  min_speech_ms: 700
+  silence_ms: 400
 
 audio:
   enabled: true
