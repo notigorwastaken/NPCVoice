@@ -4,6 +4,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.npcvoice.NPCVoicePlugin;
 import com.npcvoice.config.ConfigManager;
+import com.npcvoice.util.HttpSupport;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.OutputStream;
@@ -65,26 +66,33 @@ public final class STTManager {
 
         URL url = URI.create(configManager.sttOpenaiUrl()).toURL();
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setRequestMethod("POST");
-        conn.setRequestProperty("Authorization", "Bearer " + configManager.sttOpenaiApiKey());
-        conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
-        conn.setDoOutput(true);
+        try {
+            HttpSupport.configure(conn, configManager.httpConnectTimeoutMs(), configManager.httpReadTimeoutMs());
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Authorization", "Bearer " + configManager.sttOpenaiApiKey());
+            conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
+            conn.setDoOutput(true);
 
-        try (OutputStream os = conn.getOutputStream()) {
-            os.write(body);
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body);
+            }
+
+            int responseCode = conn.getResponseCode();
+            if (responseCode != 200) {
+                plugin.getLogger().warning("OpenAI STT API returned code " + responseCode
+                        + HttpSupport.readError(conn));
+                return Optional.empty();
+            }
+
+            String responseBody = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            JsonObject response = JsonParser.parseString(responseBody).getAsJsonObject();
+            if (!response.has("text")) return Optional.empty();
+            return Optional.ofNullable(response.get("text").getAsString())
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty());
+        } finally {
+            conn.disconnect();
         }
-
-        int responseCode = conn.getResponseCode();
-        if (responseCode != 200) {
-            String error = new String(conn.getErrorStream() != null ? conn.getErrorStream().readAllBytes() : new byte[0]);
-            plugin.getLogger().warning("OpenAI STT API returned code " + responseCode + ": " + error);
-            return Optional.empty();
-        }
-
-        String responseBody = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        JsonObject response = JsonParser.parseString(responseBody).getAsJsonObject();
-        if (!response.has("text")) return Optional.empty();
-        return Optional.ofNullable(response.get("text").getAsString()).map(String::trim).filter(s -> !s.isEmpty());
     }
 
     private byte[] buildMultipartBody(byte[] wavBytes, String boundary, String model) {
@@ -135,36 +143,42 @@ public final class STTManager {
 
         URL url = URI.create(configManager.sttGoogleUrl() + "?key=" + configManager.sttGoogleApiKey()).toURL();
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setRequestMethod("POST");
-        conn.setRequestProperty("Content-Type", "application/json");
-        conn.setDoOutput(true);
+        try {
+            HttpSupport.configure(conn, configManager.httpConnectTimeoutMs(), configManager.httpReadTimeoutMs());
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setDoOutput(true);
 
-        try (OutputStream os = conn.getOutputStream()) {
-            byte[] body = payload.toString().getBytes(StandardCharsets.UTF_8);
-            os.write(body, 0, body.length);
-        }
+            try (OutputStream os = conn.getOutputStream()) {
+                byte[] body = payload.toString().getBytes(StandardCharsets.UTF_8);
+                os.write(body, 0, body.length);
+            }
 
-        int responseCode = conn.getResponseCode();
-        if (responseCode != 200) {
-            plugin.getLogger().warning("Google STT API returned code " + responseCode);
-            return Optional.empty();
-        }
+            int responseCode = conn.getResponseCode();
+            if (responseCode != 200) {
+                plugin.getLogger().warning("Google STT API returned code " + responseCode
+                        + HttpSupport.readError(conn));
+                return Optional.empty();
+            }
 
-        String responseBody = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        JsonObject response = JsonParser.parseString(responseBody).getAsJsonObject();
-        if (response.has("results")) {
-            var results = response.getAsJsonArray("results");
-            if (!results.isEmpty()) {
-                var first = results.get(0).getAsJsonObject();
-                if (first.has("alternatives")) {
-                    var alternatives = first.getAsJsonArray("alternatives");
-                    if (!alternatives.isEmpty()) {
-                        String transcript = alternatives.get(0).getAsJsonObject().get("transcript").getAsString();
-                        return Optional.of(transcript.trim()).filter(s -> !s.isEmpty());
+            String responseBody = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            JsonObject response = JsonParser.parseString(responseBody).getAsJsonObject();
+            if (response.has("results")) {
+                var results = response.getAsJsonArray("results");
+                if (!results.isEmpty()) {
+                    var first = results.get(0).getAsJsonObject();
+                    if (first.has("alternatives")) {
+                        var alternatives = first.getAsJsonArray("alternatives");
+                        if (!alternatives.isEmpty()) {
+                            String transcript = alternatives.get(0).getAsJsonObject().get("transcript").getAsString();
+                            return Optional.of(transcript.trim()).filter(s -> !s.isEmpty());
+                        }
                     }
                 }
             }
+            return Optional.empty();
+        } finally {
+            conn.disconnect();
         }
-        return Optional.empty();
     }
 }

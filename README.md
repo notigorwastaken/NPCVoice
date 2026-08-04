@@ -9,6 +9,7 @@
 [![GitHub Stars](https://img.shields.io/github/stars/notigorwastaken/NPCVoice?style=social)](https://github.com/notigorwastaken/NPCVoice/stargazers)
 [![GitHub Issues](https://img.shields.io/github/issues/notigorwastaken/NPCVoice)](https://github.com/notigorwastaken/NPCVoice/issues)
 [![GitHub Downloads](https://img.shields.io/github/downloads/notigorwastaken/NPCVoice/total)](https://github.com/notigorwastaken/NPCVoice/releases)
+[![Build](https://github.com/notigorwastaken/NPCVoice/actions/workflows/build.yml/badge.svg)](https://github.com/notigorwastaken/NPCVoice/actions/workflows/build.yml)
 
 A Minecraft plugin that gives **Citizens NPCs** realistic voices using **Simple Voice Chat**.
 
@@ -126,6 +127,33 @@ npcs:
     stt_enabled: true
 ```
 
+Provider-specific defaults are configured under `tts.<provider>.voice` (or
+`tts.piper.model` / `tts.gtts.lang`). The value in `voices.default` acts as the
+default alias for NPCs without an override; named entries in `voices.presets`
+remain available as explicit aliases.
+
+Click and approach dialogue can be configured per NPC:
+
+```yaml
+npcs:
+  guide:
+    id: 123
+    click:
+      random: false
+      cooldown: 3
+      speech:
+        - "Welcome, %player_name%!"
+        - "@recorded-greeting"
+    approach:
+      radius: 8
+      cooldown: 10
+      speech:
+        - "Come closer and talk to me."
+```
+
+Prefix a dialogue entry with `@` to play a `.wav` or `.mp3` file from
+`plugins/NPCVoice/audio` instead of generating speech.
+
 ### Streaming TTS
 
 Set `tts.streaming: true` to start playback while the audio is still being generated. Streaming is used automatically
@@ -153,22 +181,27 @@ Developers can use the built-in API to trigger NPC speech programmatically.
 
 ```java
 NPCVoiceAPI.speak(npc, "Hello there!");
-NPCVoiceAPI.
-
-speak(npc, "Hello there!","narrator");
+NPCVoiceAPI.speak(npc, "Hello there!", "narrator");
 ```
 
 Per-NPC settings can be edited at runtime:
 
 ```java
-NPCVoiceAPI.setNpcVoice("my_npc","narrator");
-NPCVoiceAPI.
-
-setNpcProvider("my_npc","openai");
-NPCVoiceAPI.
-
-saveNpcs();
+NPCVoiceAPI.setNpcVoice("my_npc", "narrator");
+NPCVoiceAPI.setNpcProvider("my_npc", "openai");
+NPCVoiceAPI.saveNpcs();
 ```
+
+---
+
+## Building from source
+
+```bash
+./gradlew clean build
+```
+
+The shaded plugin JAR is written to `build/libs/NPCVoice-<version>.jar`.
+Pull requests run the same build and the unit test suite on Java 21.
 
 ---
 

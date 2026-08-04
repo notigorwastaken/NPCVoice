@@ -6,6 +6,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 public final class NPCVoiceSession {
 
@@ -17,7 +18,7 @@ public final class NPCVoiceSession {
     private volatile long lastSpeechTime;
     private volatile int currentSpeechIndex;
     private volatile boolean interrupted;
-    private volatile long speechGeneration;
+    private final AtomicLong speechGeneration;
 
     public NPCVoiceSession(@NotNull NPC npc) {
         this.npc = npc;
@@ -27,6 +28,7 @@ public final class NPCVoiceSession {
         this.lastSpeechTime = 0;
         this.currentSpeechIndex = 0;
         this.interrupted = false;
+        this.speechGeneration = new AtomicLong();
         updateLocation();
     }
 
@@ -71,10 +73,10 @@ public final class NPCVoiceSession {
     public void resetInterrupted() { this.interrupted = false; }
 
     public long speechGeneration() {
-        return speechGeneration;
+        return speechGeneration.get();
     }
 
     public void incrementSpeechGeneration() {
-        this.speechGeneration++;
+        this.speechGeneration.incrementAndGet();
     }
 }

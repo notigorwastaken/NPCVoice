@@ -2,6 +2,7 @@ package com.npcvoice.audio;
 
 import com.npcvoice.NPCVoicePlugin;
 import com.npcvoice.util.AudioConverter;
+import com.npcvoice.util.SafePaths;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -24,14 +25,12 @@ public final class AudioFileManager {
 
     private final NPCVoicePlugin plugin;
     private final Path audioDir;
-    private final int maxCachedFiles;
     private final Map<String, CachedAudio> cache;
     private List<String> fileIndex;
 
     public AudioFileManager(NPCVoicePlugin plugin, Path dataFolder) {
         this.plugin = plugin;
         this.audioDir = dataFolder.resolve("audio");
-        this.maxCachedFiles = plugin.getConfig().getInt("audio.max_cached_files", 50);
         this.cache = new ConcurrentHashMap<>();
         this.fileIndex = new ArrayList<>();
     }
@@ -81,6 +80,8 @@ public final class AudioFileManager {
 
         short[] samples = loadAudioFile(name);
         if (samples != null) {
+            int maxCachedFiles = Math.max(0, plugin.getConfig().getInt("audio.max_cached_files", 50));
+            if (maxCachedFiles == 0) return samples;
             if (cache.size() >= maxCachedFiles) {
                 evictOldest();
             }
@@ -91,22 +92,22 @@ public final class AudioFileManager {
 
     @Nullable
     public File findAudioFile(@NotNull String name) {
-        File wavFile = audioDir.resolve(name + ".wav").toFile();
-        if (wavFile.exists()) return wavFile;
+        Path wavPath = SafePaths.resolveDirectChild(audioDir, name, ".wav").orElse(null);
+        if (wavPath != null && Files.isRegularFile(wavPath)) return wavPath.toFile();
 
-        File mp3File = audioDir.resolve(name + ".mp3").toFile();
-        if (mp3File.exists()) return mp3File;
+        Path mp3Path = SafePaths.resolveDirectChild(audioDir, name, ".mp3").orElse(null);
+        if (mp3Path != null && Files.isRegularFile(mp3Path)) return mp3Path.toFile();
 
         return null;
     }
 
     @Nullable
     public String findAudioFileName(@NotNull String name) {
-        File wavFile = audioDir.resolve(name + ".wav").toFile();
-        if (wavFile.exists()) return name + ".wav";
+        Path wavPath = SafePaths.resolveDirectChild(audioDir, name, ".wav").orElse(null);
+        if (wavPath != null && Files.isRegularFile(wavPath)) return wavPath.getFileName().toString();
 
-        File mp3File = audioDir.resolve(name + ".mp3").toFile();
-        if (mp3File.exists()) return name + ".mp3";
+        Path mp3Path = SafePaths.resolveDirectChild(audioDir, name, ".mp3").orElse(null);
+        if (mp3Path != null && Files.isRegularFile(mp3Path)) return mp3Path.getFileName().toString();
 
         return null;
     }

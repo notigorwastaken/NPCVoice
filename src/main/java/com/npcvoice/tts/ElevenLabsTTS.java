@@ -2,6 +2,7 @@ package com.npcvoice.tts;
 
 import com.google.gson.JsonObject;
 import com.npcvoice.config.ConfigManager;
+import com.npcvoice.util.HttpSupport;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -34,14 +35,14 @@ public final class ElevenLabsTTS implements TTSProvider, StreamingTTSProvider {
             conn = openConnection(text, voice, false);
             int responseCode = conn.getResponseCode();
             if (responseCode != 200) {
-                LOGGER.warning("ElevenLabs API returned code " + responseCode);
+                LOGGER.warning("ElevenLabs API returned code " + responseCode + HttpSupport.readError(conn));
                 return null;
             }
 
             return conn.getInputStream().readAllBytes();
 
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to generate ElevenLabs speech for: " + text, e);
+            LOGGER.log(Level.SEVERE, "Failed to generate ElevenLabs speech", e);
             return null;
         } finally {
             if (conn != null) conn.disconnect();
@@ -55,7 +56,8 @@ public final class ElevenLabsTTS implements TTSProvider, StreamingTTSProvider {
             conn = openConnection(text, voice, true);
             int responseCode = conn.getResponseCode();
             if (responseCode != 200) {
-                LOGGER.warning("ElevenLabs API returned code " + responseCode);
+                LOGGER.warning("ElevenLabs API returned code " + responseCode + HttpSupport.readError(conn));
+                conn.disconnect();
                 return null;
             }
         } catch (IOException e) {
@@ -67,7 +69,7 @@ public final class ElevenLabsTTS implements TTSProvider, StreamingTTSProvider {
     }
 
     private HttpURLConnection openConnection(String text, String voice, boolean stream) throws IOException {
-        String voiceId = config.resolveVoiceId(voice);
+        String voiceId = config.resolveVoiceId(voice, name());
         String apiUrl = config.elevenLabsApiUrl() + "/" + voiceId;
 
         JsonObject payload = new JsonObject();
@@ -79,6 +81,7 @@ public final class ElevenLabsTTS implements TTSProvider, StreamingTTSProvider {
 
         URL url = URI.create(apiUrl).toURL();
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        HttpSupport.configure(conn, config.httpConnectTimeoutMs(), config.httpReadTimeoutMs());
         conn.setRequestMethod("POST");
         conn.setRequestProperty("Content-Type", "application/json");
         conn.setRequestProperty("Accept", "audio/mpeg");
@@ -88,6 +91,9 @@ public final class ElevenLabsTTS implements TTSProvider, StreamingTTSProvider {
         try (OutputStream os = conn.getOutputStream()) {
             byte[] input = payload.toString().getBytes(StandardCharsets.UTF_8);
             os.write(input, 0, input.length);
+        } catch (IOException | RuntimeException e) {
+            conn.disconnect();
+            throw e;
         }
         return conn;
     }
@@ -100,5 +106,10 @@ public final class ElevenLabsTTS implements TTSProvider, StreamingTTSProvider {
     @Override
     public boolean isAvailable() {
         return available;
+    }
+
+    @Override
+    public @NotNull String cacheKey() {
+        return name() + ":" + config.elevenLabsModel();
     }
 }

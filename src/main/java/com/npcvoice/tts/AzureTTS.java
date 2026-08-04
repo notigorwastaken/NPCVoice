@@ -1,6 +1,7 @@
 package com.npcvoice.tts;
 
 import com.npcvoice.config.ConfigManager;
+import com.npcvoice.util.HttpSupport;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -46,14 +47,14 @@ public final class AzureTTS implements TTSProvider, StreamingTTSProvider {
             conn = openConnection(text, voice);
             int responseCode = conn.getResponseCode();
             if (responseCode != 200) {
-                LOGGER.warning("Azure TTS API returned code " + responseCode);
+                LOGGER.warning("Azure TTS API returned code " + responseCode + HttpSupport.readError(conn));
                 return null;
             }
 
             return conn.getInputStream().readAllBytes();
 
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to generate Azure speech for: " + text, e);
+            LOGGER.log(Level.SEVERE, "Failed to generate Azure speech", e);
             return null;
         } finally {
             if (conn != null) conn.disconnect();
@@ -67,7 +68,8 @@ public final class AzureTTS implements TTSProvider, StreamingTTSProvider {
             conn = openConnection(text, voice);
             int responseCode = conn.getResponseCode();
             if (responseCode != 200) {
-                LOGGER.warning("Azure TTS API returned code " + responseCode);
+                LOGGER.warning("Azure TTS API returned code " + responseCode + HttpSupport.readError(conn));
+                conn.disconnect();
                 return null;
             }
         } catch (IOException e) {
@@ -80,10 +82,11 @@ public final class AzureTTS implements TTSProvider, StreamingTTSProvider {
 
     private HttpURLConnection openConnection(String text, String voice) throws IOException {
         String urlString = "https://" + config.azureRegion() + ".tts.speech.microsoft.com/cognitiveservices/v1";
-        String ssml = buildSsml(text, config.resolveVoiceId(voice));
+        String ssml = buildSsml(text, config.resolveVoiceId(voice, name()));
 
         URL url = URI.create(urlString).toURL();
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        HttpSupport.configure(conn, config.httpConnectTimeoutMs(), config.httpReadTimeoutMs());
         conn.setRequestMethod("POST");
         conn.setRequestProperty("Content-Type", "application/ssml+xml");
         conn.setRequestProperty("Accept", "audio/mpeg");
@@ -94,6 +97,9 @@ public final class AzureTTS implements TTSProvider, StreamingTTSProvider {
         try (OutputStream os = conn.getOutputStream()) {
             byte[] body = ssml.getBytes(StandardCharsets.UTF_8);
             os.write(body, 0, body.length);
+        } catch (IOException | RuntimeException e) {
+            conn.disconnect();
+            throw e;
         }
         return conn;
     }
@@ -101,11 +107,12 @@ public final class AzureTTS implements TTSProvider, StreamingTTSProvider {
     private String buildSsml(String text, String voice) {
         String rate = String.format("%+.0f%%", (config.azureSpeed() - 1.0) * 100.0);
         String escaped = escapeXml(text);
+        String language = voice.matches("^[a-z]{2}-[A-Z]{2}-.+$") ? voice.substring(0, 5) : "en-US";
         return "<?xml version='1.0' encoding='UTF-8'?>"
                 + "<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' "
-                + "xml:lang='" + voice + "'>"
-                + "<voice name='" + config.azureVoice() + "'>"
-                + "<prosody pitch='" + config.azurePitch() + "' rate='" + rate + "'>"
+                + "xml:lang='" + language + "'>"
+                + "<voice name='" + escapeXml(voice) + "'>"
+                + "<prosody pitch='" + escapeXml(config.azurePitch()) + "' rate='" + rate + "'>"
                 + escaped
                 + "</prosody></voice></speak>";
     }
@@ -118,5 +125,10 @@ public final class AzureTTS implements TTSProvider, StreamingTTSProvider {
     @Override
     public boolean isAvailable() {
         return available;
+    }
+
+    @Override
+    public @NotNull String cacheKey() {
+        return name() + ":" + config.azurePitch() + ":" + config.azureSpeed();
     }
 }

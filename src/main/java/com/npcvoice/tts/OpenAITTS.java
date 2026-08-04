@@ -2,27 +2,23 @@ package com.npcvoice.tts;
 
 import com.google.gson.JsonObject;
 import com.npcvoice.config.ConfigManager;
+import com.npcvoice.util.HttpSupport;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 import java.util.Iterator;
-import java.util.NoSuchElementException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public final class OpenAITTS implements TTSProvider, StreamingTTSProvider {
 
     private static final Logger LOGGER = Logger.getLogger(OpenAITTS.class.getName());
-    private static final int CHUNK_SIZE = 8192;
-
     private final ConfigManager config;
     private final boolean available;
 
@@ -38,14 +34,14 @@ public final class OpenAITTS implements TTSProvider, StreamingTTSProvider {
             conn = openConnection(text, voice);
             int responseCode = conn.getResponseCode();
             if (responseCode != 200) {
-                LOGGER.warning("OpenAI TTS API returned code " + responseCode);
+                LOGGER.warning("OpenAI TTS API returned code " + responseCode + HttpSupport.readError(conn));
                 return null;
             }
 
             return conn.getInputStream().readAllBytes();
 
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to generate OpenAI speech for: " + text, e);
+            LOGGER.log(Level.SEVERE, "Failed to generate OpenAI speech", e);
             return null;
         } finally {
             if (conn != null) conn.disconnect();
@@ -59,7 +55,8 @@ public final class OpenAITTS implements TTSProvider, StreamingTTSProvider {
             conn = openConnection(text, voice);
             int responseCode = conn.getResponseCode();
             if (responseCode != 200) {
-                LOGGER.warning("OpenAI TTS API returned code " + responseCode);
+                LOGGER.warning("OpenAI TTS API returned code " + responseCode + HttpSupport.readError(conn));
+                conn.disconnect();
                 return null;
             }
         } catch (IOException e) {
@@ -74,10 +71,11 @@ public final class OpenAITTS implements TTSProvider, StreamingTTSProvider {
         JsonObject payload = new JsonObject();
         payload.addProperty("model", config.openaiModel());
         payload.addProperty("input", text);
-        payload.addProperty("voice", config.resolveVoiceId(voice));
+        payload.addProperty("voice", config.resolveVoiceId(voice, name()));
 
         URL url = URI.create(config.openaiApiUrl()).toURL();
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        HttpSupport.configure(conn, config.httpConnectTimeoutMs(), config.httpReadTimeoutMs());
         conn.setRequestMethod("POST");
         conn.setRequestProperty("Content-Type", "application/json");
         conn.setRequestProperty("Authorization", "Bearer " + config.openaiApiKey());
@@ -86,6 +84,9 @@ public final class OpenAITTS implements TTSProvider, StreamingTTSProvider {
         try (OutputStream os = conn.getOutputStream()) {
             byte[] input = payload.toString().getBytes(StandardCharsets.UTF_8);
             os.write(input, 0, input.length);
+        } catch (IOException | RuntimeException e) {
+            conn.disconnect();
+            throw e;
         }
         return conn;
     }
@@ -100,59 +101,8 @@ public final class OpenAITTS implements TTSProvider, StreamingTTSProvider {
         return available;
     }
 
-    private static final class HttpChunkIterator implements Iterator<byte[]> {
-        private final HttpURLConnection conn;
-        private final InputStream in;
-        private final byte[] buffer;
-        private byte[] pending;
-
-        HttpChunkIterator(HttpURLConnection conn) {
-            this.conn = conn;
-            InputStream input;
-            try {
-                input = conn.getInputStream();
-            } catch (IOException e) {
-                input = null;
-            }
-            this.in = input;
-            this.buffer = new byte[CHUNK_SIZE];
-            this.pending = in != null ? readNext() : null;
-        }
-
-        @Override
-        public boolean hasNext() {
-            return pending != null;
-        }
-
-        @Override
-        public byte[] next() {
-            if (pending == null) throw new NoSuchElementException();
-            byte[] current = pending;
-            pending = readNext();
-            return current;
-        }
-
-        private byte[] readNext() {
-            try {
-                int n = in.read(buffer);
-                if (n <= 0) {
-                    close();
-                    return null;
-                }
-                return Arrays.copyOf(buffer, n);
-            } catch (IOException e) {
-                LOGGER.log(Level.FINE, "Audio stream ended early", e);
-                close();
-                return null;
-            }
-        }
-
-        private void close() {
-            try {
-                in.close();
-            } catch (IOException ignored) {
-            }
-            conn.disconnect();
-        }
+    @Override
+    public @NotNull String cacheKey() {
+        return name() + ":" + config.openaiModel();
     }
 }

@@ -32,10 +32,17 @@ public final class ChunkedInputStream extends InputStream {
      * still be returned by subsequent {@link #read} calls.
      */
     public byte[] peek(int n) throws IOException {
-        if (pendingBuf == null) pendingBuf = new byte[n];
-        if (pendingLen < n) {
+        if (n <= 0) return new byte[0];
+        if (pendingBuf == null) {
+            pendingBuf = new byte[n];
+        } else if (pendingBuf.length < n) {
+            pendingBuf = Arrays.copyOf(pendingBuf, n);
+        }
+        while (pendingLen < n) {
             int got = readInternal(pendingBuf, pendingLen, n - pendingLen);
-            if (got > 0) pendingLen += got;
+            if (got < 0) break;
+            if (got == 0) continue;
+            pendingLen += got;
         }
         return Arrays.copyOf(pendingBuf, Math.min(pendingLen, n));
     }

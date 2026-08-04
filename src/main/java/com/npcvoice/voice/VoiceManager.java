@@ -97,11 +97,12 @@ public final class VoiceManager {
     public CompletableFuture<Void> speak(@NotNull NPC npc, @NotNull String text, @NotNull String voice) {
         NPCVoiceSession session = getOrCreateSession(npc);
         session.updateLocation();
-        session.setSpeaking(true);
         session.interrupt();
-        session.resetInterrupted();
-        stopExistingPlayer(npc);
         session.incrementSpeechGeneration();
+        session.resetInterrupted();
+        session.setSpeaking(true);
+        stopExistingPlayer(npc);
+        final long generation = session.speechGeneration();
 
         if (configManager.debug()) {
             plugin.getLogger().info("NPC " + npc.getName() + " speaking: " + text);
@@ -115,15 +116,14 @@ public final class VoiceManager {
         }
 
         if (configManager.ttsStreaming() && provider instanceof StreamingTTSProvider) {
-            return speakStreaming(npc, session, text, voice, provider);
+            return speakStreaming(npc, session, text, voice, provider, generation);
         }
 
-        final long generation = session.speechGeneration();
-        return audioCache.getOrGenerateAsync(text, voice, provider.name(), () -> {
-            String resolvedVoice = configManager.resolveVoiceId(voice);
-            return ttsManager.generateSpeechAsync(text, resolvedVoice, provider);
+        String resolvedVoice = configManager.resolveVoiceId(voice, provider.name());
+        return audioCache.getOrGenerateAsync(text, resolvedVoice, provider.cacheKey(), () -> {
+            return ttsManager.generateSpeechAsync(text, voice, provider);
         }).thenAccept(audioData -> {
-            if (session.speechGeneration() != generation) {
+            if (session.speechGeneration() != generation || session.isInterrupted()) {
                 return;
             }
             if (audioData == null || audioData.length == 0) {
@@ -132,7 +132,7 @@ public final class VoiceManager {
                 return;
             }
 
-            playAudio(npc, session, audioData);
+            playAudio(npc, session, audioData, generation);
         }).exceptionally(ex -> {
             if (session.speechGeneration() != generation) {
                 return null;
@@ -164,13 +164,15 @@ public final class VoiceManager {
             @NotNull NPCVoiceSession session,
             @NotNull String text,
             @NotNull String voice,
-            @NotNull TTSProvider provider
+            @NotNull TTSProvider provider,
+            long generation
     ) {
         if (!(provider instanceof StreamingTTSProvider streamingProvider)) {
             return CompletableFuture.completedFuture(null);
         }
 
         return CompletableFuture.runAsync(() -> {
+            if (session.speechGeneration() != generation || session.isInterrupted()) return;
             if (voicechatApi == null) {
                 session.setSpeaking(false);
                 return;
@@ -180,22 +182,24 @@ public final class VoiceManager {
                 plugin.getLogger().info("NPC " + npc.getName() + " streaming speech (" + provider.name() + ")");
             }
 
-            String resolvedVoice = configManager.resolveVoiceId(voice);
             Iterator<byte[]> chunks;
             try {
-                chunks = streamingProvider.generateSpeechStream(text, resolvedVoice);
+                chunks = streamingProvider.generateSpeechStream(text, voice);
             } catch (Exception e) {
                 plugin.getLogger().log(Level.SEVERE, "Failed to start TTS stream for NPC " + npc.getName(), e);
-                session.setSpeaking(false);
+                if (session.speechGeneration() == generation) session.setSpeaking(false);
                 return;
             }
+
+            if (session.speechGeneration() != generation || session.isInterrupted()) return;
 
             if (chunks == null) {
                 plugin.getLogger().warning("TTS streaming failed for NPC " + npc.getName()
                         + ", falling back to non-streaming generation.");
-                byte[] audio = provider.generateSpeech(text, resolvedVoice);
+                byte[] audio = provider.generateSpeech(text, voice);
+                if (session.speechGeneration() != generation || session.isInterrupted()) return;
                 if (audio != null && audio.length > 0) {
-                    playAudio(npc, session, audio);
+                    playAudio(npc, session, audio, generation);
                 } else {
                     session.setSpeaking(false);
                 }
@@ -204,8 +208,8 @@ public final class VoiceManager {
 
             BlockingQueue<StreamingAudioDecoder.PcmChunk> pcmQueue =
                     StreamingAudioDecoder.decodeAsync(chunks, STREAM_CHUNK_SAMPLES);
-            final long generation = session.speechGeneration();
 
+            if (session.speechGeneration() != generation || session.isInterrupted()) return;
             if (!npc.isSpawned()) {
                 session.setSpeaking(false);
                 return;
@@ -237,7 +241,7 @@ public final class VoiceManager {
                         StreamingAudioDecoder.PcmChunk chunk = pcmQueue.poll(50, TimeUnit.MILLISECONDS);
                         if (chunk == null) continue;
                         if (chunk.isEnd()) return null;
-                        return chunk.samples;
+                        return AudioConverter.scaleVolume(chunk.samples, configManager.voiceChatVolume());
                     }
                     return null;
                 } catch (InterruptedException e) {
@@ -253,11 +257,17 @@ public final class VoiceManager {
             }
 
             player.setOnStopped(() -> {
-                activePlayers.remove(npc.getUniqueId());
-                session.setSpeaking(false);
-                hideSpeakingIcon(npc, session);
+                activePlayers.remove(npc.getUniqueId(), player);
+                if (session.speechGeneration() == generation) {
+                    session.setSpeaking(false);
+                    hideSpeakingIcon(npc, session);
+                }
             });
 
+            if (session.speechGeneration() != generation || session.isInterrupted()) {
+                player.stopPlaying();
+                return;
+            }
             activePlayers.put(npc.getUniqueId(), player);
             showSpeakingIcon(npc, session, 6000);
             player.startPlaying();
@@ -267,7 +277,7 @@ public final class VoiceManager {
 
         }).exceptionally(ex -> {
             plugin.getLogger().log(Level.SEVERE, "Error in streaming speech for NPC " + npc.getName(), ex);
-            session.setSpeaking(false);
+            if (session.speechGeneration() == generation) session.setSpeaking(false);
             return null;
         });
     }
@@ -275,42 +285,49 @@ public final class VoiceManager {
     public CompletableFuture<Void> playFile(@NotNull NPC npc, @NotNull String fileName) {
         NPCVoiceSession session = getOrCreateSession(npc);
         session.updateLocation();
-        session.setSpeaking(true);
         session.interrupt();
-        session.resetInterrupted();
-        stopExistingPlayer(npc);
         session.incrementSpeechGeneration();
+        session.resetInterrupted();
+        session.setSpeaking(true);
+        stopExistingPlayer(npc);
+        final long generation = session.speechGeneration();
 
         return CompletableFuture.supplyAsync(() -> {
             short[] pcmSamples = audioFileManager.getPcmShorts(fileName);
             if (pcmSamples == null || pcmSamples.length == 0) {
                 plugin.getLogger().warning("Audio file not found or empty: " + fileName + " for NPC " + npc.getName());
-                session.setSpeaking(false);
+                if (session.speechGeneration() == generation) session.setSpeaking(false);
                 return null;
             }
             return pcmSamples;
         }).thenAccept(pcmSamples -> {
-            if (pcmSamples == null) return;
-            playPcm(npc, session, pcmSamples);
+            if (pcmSamples == null
+                    || session.speechGeneration() != generation
+                    || session.isInterrupted()) return;
+            playPcm(npc, session, pcmSamples, generation);
         }).exceptionally(ex -> {
             plugin.getLogger().log(Level.SEVERE, "Error playing audio file for NPC " + npc.getName(), ex);
-            session.setSpeaking(false);
+            if (session.speechGeneration() == generation) session.setSpeaking(false);
             return null;
         });
     }
 
-    private void playAudio(NPC npc, NPCVoiceSession session, byte[] audioData) {
+    private void playAudio(NPC npc, NPCVoiceSession session, byte[] audioData, long generation) {
+        if (session.speechGeneration() != generation || session.isInterrupted()) return;
         short[] pcmSamples = AudioConverter.toPcmShorts(audioData);
         if (pcmSamples.length == 0) {
             session.setSpeaking(false);
             return;
         }
-        playPcm(npc, session, pcmSamples);
+        playPcm(npc, session, pcmSamples, generation);
     }
 
-    private void playPcm(NPC npc, NPCVoiceSession session, short[] pcmSamples) {
-        if (voicechatApi == null) return;
-        if (!npc.isSpawned()) return;
+    private void playPcm(NPC npc, NPCVoiceSession session, short[] pcmSamples, long generation) {
+        if (session.speechGeneration() != generation || session.isInterrupted()) return;
+        if (voicechatApi == null || !npc.isSpawned()) {
+            session.setSpeaking(false);
+            return;
+        }
 
         if (configManager.debug()) {
             plugin.getLogger().info("NPC " + npc.getName() + " playing " + pcmSamples.length
@@ -318,8 +335,12 @@ public final class VoiceManager {
         }
 
         try {
+            short[] outputSamples = AudioConverter.scaleVolume(pcmSamples, configManager.voiceChatVolume());
             Location loc = npc.getStoredLocation();
-            if (loc == null || loc.getWorld() == null) return;
+            if (loc == null || loc.getWorld() == null) {
+                session.setSpeaking(false);
+                return;
+            }
 
             AudioChannel channel = createAudioChannel(npc, loc);
 
@@ -337,7 +358,7 @@ public final class VoiceManager {
             }
 
             AudioPlayer player = voicechatApi.createAudioPlayer(
-                    channel, voicechatApi.createEncoder(), pcmSamples
+                    channel, voicechatApi.createEncoder(), outputSamples
             );
 
             if (player == null) {
@@ -347,11 +368,17 @@ public final class VoiceManager {
             }
 
             player.setOnStopped(() -> {
-                activePlayers.remove(npc.getUniqueId());
-                session.setSpeaking(false);
-                hideSpeakingIcon(npc, session);
+                activePlayers.remove(npc.getUniqueId(), player);
+                if (session.speechGeneration() == generation) {
+                    session.setSpeaking(false);
+                    hideSpeakingIcon(npc, session);
+                }
             });
 
+            if (session.speechGeneration() != generation || session.isInterrupted()) {
+                player.stopPlaying();
+                return;
+            }
             int durationTicks = Math.max(40, (int) Math.ceil(pcmSamples.length / 48000.0 * 20.0) + 40);
             activePlayers.put(npc.getUniqueId(), player);
             showSpeakingIcon(npc, session, durationTicks);
@@ -362,8 +389,10 @@ public final class VoiceManager {
 
         } catch (Exception e) {
             plugin.getLogger().log(Level.SEVERE, "Failed to play audio for NPC " + npc.getName(), e);
-            session.setSpeaking(false);
-            hideSpeakingIcon(npc, session);
+            if (session.speechGeneration() == generation) {
+                session.setSpeaking(false);
+                hideSpeakingIcon(npc, session);
+            }
         }
     }
 
@@ -448,8 +477,7 @@ public final class VoiceManager {
 
     private void hideHologramIcon(NPC npc) {
         try {
-            if (!npc.hasTrait(HologramTrait.class)) return;
-            HologramTrait hologram = npc.getTrait(HologramTrait.class);
+            HologramTrait hologram = npc.getTraitNullable(HologramTrait.class);
             if (hologram == null) return;
             int index = hologram.getLines().indexOf(configManager.speakingIcon());
             if (index >= 0) {
@@ -496,6 +524,7 @@ public final class VoiceManager {
     public void stop(@NotNull NPC npc) {
         NPCVoiceSession session = sessions.get(npc.getUniqueId());
         if (session != null) {
+            session.incrementSpeechGeneration();
             session.interrupt();
             session.setSpeaking(false);
             hideSpeakingIcon(npc, session);
@@ -524,6 +553,7 @@ public final class VoiceManager {
         });
         activePlayers.clear();
         sessions.values().forEach(session -> {
+            session.incrementSpeechGeneration();
             session.interrupt();
             session.setSpeaking(false);
             NPC npc = session.npc();

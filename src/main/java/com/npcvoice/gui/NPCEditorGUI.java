@@ -168,7 +168,7 @@ public final class NPCEditorGUI implements Listener {
 
         inv.setItem(0, item(Material.NOTE_BLOCK, "Voice",
                 "Current: " + currentVoice,
-                "Resolves to: " + configManager.resolveVoiceId(currentVoice)));
+                "Resolves to: " + configManager.resolveVoiceId(currentVoice, currentProvider)));
         inv.setItem(1, item(Material.ARROW, "< Voice"));
         inv.setItem(2, item(Material.ARROW, "Voice >"));
 
@@ -334,11 +334,19 @@ public final class NPCEditorGUI implements Listener {
     }
 
     private List<String> voiceOptions() {
-        return new ArrayList<>(configManager.voicePresets().keySet());
+        List<String> options = new ArrayList<>();
+        options.add(configManager.defaultVoice());
+        configManager.voicePresets().keySet().stream()
+                .filter(voice -> !voice.equalsIgnoreCase(configManager.defaultVoice()))
+                .sorted(String.CASE_INSENSITIVE_ORDER)
+                .forEach(options::add);
+        return options;
     }
 
     private List<String> providerOptions() {
-        return new ArrayList<>(ttsManager.getAllProviders().keySet());
+        return ttsManager.getAllProviders().keySet().stream()
+                .sorted(String.CASE_INSENSITIVE_ORDER)
+                .toList();
     }
 
     @EventHandler

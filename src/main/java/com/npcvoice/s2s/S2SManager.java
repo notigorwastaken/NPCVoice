@@ -59,9 +59,10 @@ public final class S2SManager implements Listener {
     }
 
     public void shutdown() {
+        VoicechatServerApi currentApi = api;
         for (PlayerAudioListener listener : listeners.values()) {
             try {
-                api.unregisterAudioListener(listener);
+                if (currentApi != null) currentApi.unregisterAudioListener(listener);
             } catch (Exception ignored) {
             }
         }
@@ -80,7 +81,9 @@ public final class S2SManager implements Listener {
 
     public void registerPlayer(@NotNull Player player) {
         if (api == null || listeners.containsKey(player.getUniqueId())) return;
-        if (configManager.sttProvider().equalsIgnoreCase("none")) return;
+        if (!configManager.s2sEnabled()
+                || configManager.sttProvider() == null
+                || configManager.sttProvider().equalsIgnoreCase("none")) return;
 
         try {
             PlayerAudioListener listener = api.playerAudioListenerBuilder()
@@ -112,6 +115,14 @@ public final class S2SManager implements Listener {
         }
         utterances.remove(player.getUniqueId());
         cooldowns.remove(player.getUniqueId());
+    }
+
+    public void reload() {
+        if (api == null) return;
+        for (Player player : plugin.getServer().getOnlinePlayers()) {
+            unregisterPlayer(player);
+            registerPlayer(player);
+        }
     }
 
     private void handlePacket(@NotNull Player player, @NotNull SoundPacket packet) {
@@ -194,16 +205,19 @@ public final class S2SManager implements Listener {
                 return;
             }
 
-            String text = transcript.get();
-            if (configManager.debug()) {
-                plugin.getLogger().info(player.getName() + " -> NPC " + npc.getName() + ": " + text);
-            }
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                if (!player.isOnline() || !npc.isSpawned()) return;
+                String text = transcript.get();
+                if (configManager.debug()) {
+                    plugin.getLogger().info(player.getName() + " -> NPC " + npc.getName() + ": " + text);
+                }
 
-            String voice = configManager.npcConfigByNpcId(npc.getId())
-                    .flatMap(NPCConfig::voice)
-                    .orElse(configManager.defaultVoice());
+                String voice = configManager.npcConfigByNpcId(npc.getId())
+                        .flatMap(NPCConfig::voice)
+                        .orElse(configManager.defaultVoice());
 
-            voiceManager.speak(npc, text, voice);
+                voiceManager.speak(npc, text, voice);
+            });
         });
     }
 

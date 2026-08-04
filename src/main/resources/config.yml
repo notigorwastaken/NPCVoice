@@ -10,6 +10,8 @@ tts:
   elevenlabs:
     api_key: ""
     model: eleven_multilingual_v2
+    # ElevenLabs voice ID used when an NPC does not override its voice.
+    voice: ""
     api_url: "https://api.elevenlabs.io/v1/text-to-speech"
   openai:
     api_key: ""
@@ -70,6 +72,12 @@ voices:
 voicechat:
   distance: 20
   volume: 1.0
+
+# Time limits for external TTS/STT HTTP requests. These prevent a stalled
+# provider from holding a worker thread forever.
+network:
+  connect_timeout_ms: 10000
+  read_timeout_ms: 60000
 
 nameplate:
   speaking_icon:

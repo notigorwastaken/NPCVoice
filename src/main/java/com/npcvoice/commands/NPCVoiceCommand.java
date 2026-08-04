@@ -93,7 +93,6 @@ public final class NPCVoiceCommand implements CommandExecutor, TabCompleter {
         }
 
         plugin.reloadConfig();
-        plugin.getConfigManager().reload();
         dialogueManager.clearCooldowns();
         sendMessage(sender, Component.text("NPCVoice configuration reloaded.").color(NamedTextColor.GREEN));
     }
@@ -119,8 +118,13 @@ public final class NPCVoiceCommand implements CommandExecutor, TabCompleter {
         }
 
         voiceManager.speak(npc, text).thenRun(() -> {
-            if (sender instanceof Player player && player.isOnline()) {
-                sendMessage(player, Component.text("NPC speaking: " + npc.getName()).color(NamedTextColor.GREEN));
+            if (sender instanceof Player player) {
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    if (player.isOnline()) {
+                        sendMessage(player, Component.text("NPC speaking: " + npc.getName())
+                                .color(NamedTextColor.GREEN));
+                    }
+                });
             }
         });
     }
@@ -226,8 +230,13 @@ public final class NPCVoiceCommand implements CommandExecutor, TabCompleter {
         }
 
         voiceManager.playFile(npc, fileName).thenRun(() -> {
-            if (sender instanceof Player player && player.isOnline()) {
-                sendMessage(player, Component.text("Playing audio file: " + resolvedFile + " on NPC " + npc.getName()).color(NamedTextColor.GREEN));
+            if (sender instanceof Player player) {
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    if (player.isOnline()) {
+                        sendMessage(player, Component.text("Playing audio file: " + resolvedFile
+                                + " on NPC " + npc.getName()).color(NamedTextColor.GREEN));
+                    }
+                });
             }
         });
     }

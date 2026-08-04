@@ -1,8 +1,6 @@
 package com.npcvoice.util;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.concurrent.BlockingQueue;
@@ -116,22 +114,39 @@ public final class StreamingAudioDecoder {
     private static void decodeRaw(ChunkedInputStream in, int chunkSamples, BlockingQueue<PcmChunk> out) throws IOException {
         Accumulator accumulator = new Accumulator(chunkSamples, out);
         byte[] tmp = new byte[4096];
+        int pendingLowByte = -1;
         int read;
         while ((read = in.read(tmp)) != -1) {
-            short[] chunk = bytesToShorts(tmp, read);
+            RawPcmChunk decoded = bytesToShorts(tmp, read, pendingLowByte);
+            short[] chunk = decoded.samples();
+            pendingLowByte = decoded.pendingLowByte();
             accumulator.append(chunk, TARGET_SAMPLE_RATE);
         }
         accumulator.flush();
     }
 
-    private static short[] bytesToShorts(byte[] data, int len) {
-        int count = len / 2;
+    private static RawPcmChunk bytesToShorts(byte[] data, int len, int pendingLowByte) {
+        int count = (len + (pendingLowByte >= 0 ? 1 : 0)) / 2;
         short[] samples = new short[count];
-        ByteBuffer buf = ByteBuffer.wrap(data, 0, len).order(ByteOrder.LITTLE_ENDIAN);
-        for (int i = 0; i < count; i++) {
-            samples[i] = buf.getShort();
+        int inputIndex = 0;
+        int outputIndex = 0;
+
+        if (pendingLowByte >= 0 && len > 0) {
+            samples[outputIndex++] = (short) (pendingLowByte | ((data[inputIndex++] & 0xFF) << 8));
+            pendingLowByte = -1;
         }
-        return samples;
+        while (inputIndex + 1 < len) {
+            int low = data[inputIndex++] & 0xFF;
+            int high = data[inputIndex++] & 0xFF;
+            samples[outputIndex++] = (short) (low | (high << 8));
+        }
+        if (inputIndex < len) {
+            pendingLowByte = data[inputIndex] & 0xFF;
+        }
+        return new RawPcmChunk(samples, pendingLowByte);
+    }
+
+    private record RawPcmChunk(short[] samples, int pendingLowByte) {
     }
 
     public static final class PcmChunk {

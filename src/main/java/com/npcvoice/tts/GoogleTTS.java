@@ -3,6 +3,7 @@ package com.npcvoice.tts;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.npcvoice.config.ConfigManager;
+import com.npcvoice.util.HttpSupport;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.OutputStream;
@@ -32,13 +33,14 @@ public final class GoogleTTS implements TTSProvider {
 
     @Override
     public byte[] generateSpeech(@NotNull String text, @NotNull String voice) {
+        HttpURLConnection conn = null;
         try {
             JsonObject input = new JsonObject();
             input.addProperty("text", text);
 
             JsonObject voiceConfig = new JsonObject();
             voiceConfig.addProperty("languageCode", config.googleLanguageCode());
-            voiceConfig.addProperty("name", config.resolveVoiceId(voice));
+            voiceConfig.addProperty("name", config.resolveVoiceId(voice, name()));
 
             JsonObject audioConfig = new JsonObject();
             audioConfig.addProperty("audioEncoding", "MP3");
@@ -51,7 +53,8 @@ public final class GoogleTTS implements TTSProvider {
             payload.add("audioConfig", audioConfig);
 
             URL url = URI.create(API_URL + "?key=" + config.googleApiKey()).toURL();
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn = (HttpURLConnection) url.openConnection();
+            HttpSupport.configure(conn, config.httpConnectTimeoutMs(), config.httpReadTimeoutMs());
             conn.setRequestMethod("POST");
             conn.setRequestProperty("Content-Type", "application/json");
             conn.setDoOutput(true);
@@ -63,7 +66,7 @@ public final class GoogleTTS implements TTSProvider {
 
             int responseCode = conn.getResponseCode();
             if (responseCode != 200) {
-                LOGGER.warning("Google Cloud TTS API returned code " + responseCode);
+                LOGGER.warning("Google Cloud TTS API returned code " + responseCode + HttpSupport.readError(conn));
                 return null;
             }
 
@@ -74,8 +77,10 @@ public final class GoogleTTS implements TTSProvider {
             return Base64.getDecoder().decode(audioContent);
 
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to generate Google Cloud speech for: " + text, e);
+            LOGGER.log(Level.SEVERE, "Failed to generate Google Cloud speech", e);
             return null;
+        } finally {
+            if (conn != null) conn.disconnect();
         }
     }
 
@@ -87,5 +92,10 @@ public final class GoogleTTS implements TTSProvider {
     @Override
     public boolean isAvailable() {
         return available;
+    }
+
+    @Override
+    public @NotNull String cacheKey() {
+        return name() + ":" + config.googleLanguageCode() + ":" + config.googlePitch() + ":" + config.googleSpeed();
     }
 }

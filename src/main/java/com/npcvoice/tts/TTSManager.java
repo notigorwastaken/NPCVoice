@@ -24,7 +24,7 @@ public final class TTSManager {
     }
 
     public void load() {
-        registerProvider(new PiperTTS(configManager));
+        registerProvider(new PiperTTS(configManager, plugin.getDataFolder().toPath()));
         registerProvider(new ElevenLabsTTS(configManager));
         registerProvider(new OpenAITTS(configManager));
         registerProvider(new EdgeTTS(configManager));
@@ -68,7 +68,7 @@ public final class TTSManager {
 
                 return provider.generateSpeech(text, voice);
             } catch (Exception e) {
-                plugin.getLogger().log(Level.SEVERE, "Failed to generate speech for: " + text, e);
+                plugin.getLogger().log(Level.SEVERE, "Failed to generate speech", e);
                 return null;
             }
         });

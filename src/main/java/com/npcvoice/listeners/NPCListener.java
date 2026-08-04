@@ -74,30 +74,30 @@ public final class NPCListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerMove(PlayerMoveEvent event) {
         Player player = event.getPlayer();
-
-        if (event.getFrom().distanceSquared(event.getTo()) < 0.01) return;
-
         Location to = event.getTo();
         if (to == null || to.getWorld() == null) return;
+        Location from = event.getFrom();
+        if (from.getWorld().equals(to.getWorld())
+                && from.getBlockX() == to.getBlockX()
+                && from.getBlockY() == to.getBlockY()
+                && from.getBlockZ() == to.getBlockZ()) {
+            return;
+        }
 
-        int approachRadius = plugin.getConfigManager().defaultApproachRadius();
-        double radiusSq = (double) approachRadius * approachRadius;
+        plugin.getConfigManager().allNpcConfigs().values().forEach(cfg -> cfg.approach().ifPresent(approach -> {
+            NPC npc = CitizensAPI.getNPCRegistry().getById(cfg.id());
+            if (npc == null || !npc.isSpawned()) return;
 
-        plugin.getConfigManager().allNpcConfigs().values().stream()
-                .filter(cfg -> {
-                    NPC npc = CitizensAPI.getNPCRegistry().getById(cfg.id());
-                    return npc != null && npc.isSpawned();
-                })
-                .forEach(cfg -> {
-                    NPC npc = CitizensAPI.getNPCRegistry().getById(cfg.id());
-                    if (npc == null) return;
+            Location npcLoc = npc.getStoredLocation();
+            if (npcLoc == null || npcLoc.getWorld() == null || !npcLoc.getWorld().equals(to.getWorld())) return;
 
-                    Location npcLoc = npc.getStoredLocation();
-                    if (npcLoc == null || !npcLoc.getWorld().equals(to.getWorld())) return;
-
-                    if (npcLoc.distanceSquared(to) <= radiusSq) {
-                        dialogueManager.handleApproach(npc, player);
-                    }
-                });
+            int radius = approach.radius() >= 0
+                    ? approach.radius()
+                    : plugin.getConfigManager().defaultApproachRadius();
+            double radiusSq = (double) radius * radius;
+            if (npcLoc.distanceSquared(to) <= radiusSq) {
+                dialogueManager.handleApproach(npc, player);
+            }
+        }));
     }
 }

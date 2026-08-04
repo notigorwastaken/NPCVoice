@@ -7,7 +7,6 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.function.BiConsumer;
 
@@ -22,6 +21,7 @@ public final class AudioConverter {
 
         if (isWav(audioData)) {
             WavInfo info = parseWavHeader(audioData);
+            if (info == null) return new short[0];
             short[] rawSamples = extractShortsFromWav(audioData, info);
             if (info.sampleRate == TARGET_SAMPLE_RATE) {
                 return rawSamples;
@@ -37,7 +37,7 @@ public final class AudioConverter {
     }
 
     public static boolean isWav(byte[] data) {
-        return data.length > 44
+        return data != null && data.length >= 12
                 && data[0] == 'R' && data[1] == 'I' && data[2] == 'F' && data[3] == 'F'
                 && data[8] == 'W' && data[9] == 'A' && data[10] == 'V' && data[11] == 'E';
     }
@@ -54,40 +54,37 @@ public final class AudioConverter {
         try {
             Bitstream bitstream = new Bitstream(new ByteArrayInputStream(mp3Data));
             Decoder decoder = new Decoder();
-            SampleBuffer buffer = new SampleBuffer();
-            decoder.setOutputBuffer(buffer);
 
             int sampleRate = TARGET_SAMPLE_RATE;
-            List<Short> allSamples = new ArrayList<>();
+            int totalSamples = 0;
+            List<short[]> decodedFrames = new ArrayList<>();
 
             Header header;
             while ((header = bitstream.readFrame()) != null) {
-                sampleRate = decoder.getOutputFrequency();
-                decoder.decodeFrame(header, bitstream);
-                bitstream.closeFrame();
-
-                short[] pcm = buffer.getSamples();
-                int channels = decoder.getOutputChannels();
-                int samplesPerChannel = pcm.length / channels;
-
-                for (int i = 0; i < samplesPerChannel; i++) {
-                    long sum = 0;
-                    for (int ch = 0; ch < channels; ch++) {
-                        sum += pcm[ch * samplesPerChannel + i];
+                try {
+                    Obuffer decoded = decoder.decodeFrame(header, bitstream);
+                    if (!(decoded instanceof javazoom.jl.decoder.SampleBuffer buffer)) continue;
+                    sampleRate = buffer.getSampleFrequency();
+                    short[] mono = downmixInterleaved(
+                            buffer.getBuffer(), buffer.getBufferLength(), buffer.getChannelCount());
+                    if (mono.length > 0) {
+                        decodedFrames.add(mono);
+                        totalSamples += mono.length;
                     }
-                    allSamples.add((short) (sum / channels));
+                } finally {
+                    bitstream.closeFrame();
                 }
-
-                buffer.reset();
             }
 
             bitstream.close();
 
-            if (allSamples.isEmpty()) return new short[0];
+            if (totalSamples == 0) return new short[0];
 
-            short[] mono = new short[allSamples.size()];
-            for (int i = 0; i < allSamples.size(); i++) {
-                mono[i] = allSamples.get(i);
+            short[] mono = new short[totalSamples];
+            int offset = 0;
+            for (short[] frame : decodedFrames) {
+                System.arraycopy(frame, 0, mono, offset, frame.length);
+                offset += frame.length;
             }
 
             if (sampleRate == TARGET_SAMPLE_RATE) return mono;
@@ -109,30 +106,21 @@ public final class AudioConverter {
     ) throws JavaLayerException {
         Bitstream bitstream = new Bitstream(in);
         Decoder decoder = new Decoder();
-        SampleBuffer buffer = new SampleBuffer();
-        decoder.setOutputBuffer(buffer);
 
         Header header;
         while ((header = bitstream.readFrame()) != null) {
-            int sampleRate = decoder.getOutputFrequency();
-            decoder.decodeFrame(header, bitstream);
-            bitstream.closeFrame();
-
-            short[] pcm = buffer.getSamples();
-            int channels = decoder.getOutputChannels();
-            int samplesPerChannel = pcm.length / channels;
-
-            short[] mono = new short[samplesPerChannel];
-            for (int i = 0; i < samplesPerChannel; i++) {
-                long sum = 0;
-                for (int ch = 0; ch < channels; ch++) {
-                    sum += pcm[ch * samplesPerChannel + i];
+            try {
+                Obuffer decoded = decoder.decodeFrame(header, bitstream);
+                if (decoded instanceof javazoom.jl.decoder.SampleBuffer buffer) {
+                    short[] mono = downmixInterleaved(
+                            buffer.getBuffer(), buffer.getBufferLength(), buffer.getChannelCount());
+                    if (mono.length > 0) {
+                        frameConsumer.accept(mono, buffer.getSampleFrequency());
+                    }
                 }
-                mono[i] = (short) (sum / channels);
+            } finally {
+                bitstream.closeFrame();
             }
-
-            frameConsumer.accept(mono, sampleRate);
-            buffer.reset();
         }
 
         bitstream.close();
@@ -146,32 +134,67 @@ public final class AudioConverter {
     }
 
     private static WavInfo parseWavHeader(byte[] wavData) {
-        ByteBuffer buf = ByteBuffer.wrap(wavData, 0, 44).order(ByteOrder.LITTLE_ENDIAN);
-        buf.position(22);
-        int channels = buf.getShort() & 0xFFFF;
-        int sampleRate = buf.getInt();
-        buf.position(34);
-        int bitsPerSample = buf.getShort() & 0xFFFF;
+        if (!isWav(wavData)) return null;
 
-        int dataOffset = 44;
-        for (int i = 44; i < wavData.length - 4; i++) {
-            if (wavData[i] == 'd' && wavData[i + 1] == 'a' && wavData[i + 2] == 't' && wavData[i + 3] == 'a') {
-                dataOffset = i + 8;
-                break;
+        ByteBuffer buf = ByteBuffer.wrap(wavData).order(ByteOrder.LITTLE_ENDIAN);
+        int audioFormat = -1;
+        int channels = -1;
+        int sampleRate = -1;
+        int bitsPerSample = -1;
+        int dataOffset = -1;
+        int dataLength = -1;
+
+        int position = 12;
+        while (position <= wavData.length - 8) {
+            int chunkSize = buf.getInt(position + 4);
+            if (chunkSize < 0) return null;
+            int chunkData = position + 8;
+            long chunkEnd = (long) chunkData + chunkSize;
+            if (chunkEnd > wavData.length) return null;
+
+            if (matches(wavData, position, "fmt ") && chunkSize >= 16) {
+                audioFormat = buf.getShort(chunkData) & 0xFFFF;
+                channels = buf.getShort(chunkData + 2) & 0xFFFF;
+                sampleRate = buf.getInt(chunkData + 4);
+                bitsPerSample = buf.getShort(chunkData + 14) & 0xFFFF;
+            } else if (matches(wavData, position, "data")) {
+                dataOffset = chunkData;
+                dataLength = chunkSize;
             }
+
+            if (audioFormat >= 0 && dataOffset >= 0) break;
+            position = (int) chunkEnd + (chunkSize & 1);
         }
 
-        return new WavInfo(channels, sampleRate, bitsPerSample, dataOffset);
+        if (audioFormat != 1
+                || channels <= 0
+                || sampleRate <= 0
+                || (bitsPerSample != 8 && bitsPerSample != 16 && bitsPerSample != 24)
+                || dataOffset < 0
+                || dataLength < 0) {
+            return null;
+        }
+        return new WavInfo(channels, sampleRate, bitsPerSample, dataOffset, dataLength);
+    }
+
+    private static boolean matches(byte[] data, int offset, String value) {
+        return offset >= 0
+                && offset + value.length() <= data.length
+                && data[offset] == value.charAt(0)
+                && data[offset + 1] == value.charAt(1)
+                && data[offset + 2] == value.charAt(2)
+                && data[offset + 3] == value.charAt(3);
     }
 
     private static short[] extractShortsFromWav(byte[] wavData, WavInfo info) {
         int sampleBytes = info.bitsPerSample / 8;
-        int totalSamples = (wavData.length - info.dataOffset) / sampleBytes;
+        int totalSamples = info.dataLength / sampleBytes;
         int frames = totalSamples / info.channels;
 
         short[] mono = new short[frames];
 
-        ByteBuffer buf = ByteBuffer.wrap(wavData, info.dataOffset, wavData.length - info.dataOffset)
+        ByteBuffer buf = ByteBuffer.wrap(wavData, info.dataOffset, info.dataLength)
+                .slice()
                 .order(ByteOrder.LITTLE_ENDIAN);
 
         for (int i = 0; i < frames; i++) {
@@ -207,6 +230,9 @@ public final class AudioConverter {
     }
 
     public static short[] resample(short[] input, int inputRate, int outputRate) {
+        if (input == null || input.length == 0 || inputRate <= 0 || outputRate <= 0) {
+            return new short[0];
+        }
         if (inputRate == outputRate) return input;
 
         int outputLength = (int) ((long) input.length * outputRate / inputRate);
@@ -228,58 +254,34 @@ public final class AudioConverter {
         return output;
     }
 
-    private record WavInfo(int channels, int sampleRate, int bitsPerSample, int dataOffset) {
+    public static short[] scaleVolume(short[] input, double volume) {
+        if (input == null || input.length == 0) return new short[0];
+        double clamped = Math.clamp(volume, 0.0, 1.0);
+        if (clamped == 1.0) return input;
+
+        short[] output = new short[input.length];
+        for (int i = 0; i < input.length; i++) {
+            output[i] = (short) Math.round(input[i] * clamped);
+        }
+        return output;
     }
 
-    static final class SampleBuffer extends Obuffer {
-        private short[] buffer;
-        private final int[] bitPosition;
-
-        SampleBuffer() {
-            buffer = new short[4096];
-            bitPosition = new int[2];
-        }
-
-        @Override
-        public void append(int channel, short value) {
-            if (bitPosition[channel] >= buffer.length) {
-                buffer = Arrays.copyOf(buffer, buffer.length * 2);
+    static short[] downmixInterleaved(short[] input, int sampleCount, int channels) {
+        if (input == null || channels <= 0 || sampleCount <= 0) return new short[0];
+        int boundedCount = Math.min(sampleCount, input.length);
+        int frames = boundedCount / channels;
+        short[] mono = new short[frames];
+        for (int frame = 0; frame < frames; frame++) {
+            long sum = 0;
+            int offset = frame * channels;
+            for (int channel = 0; channel < channels; channel++) {
+                sum += input[offset + channel];
             }
-            buffer[bitPosition[channel]++] = value;
+            mono[frame] = (short) (sum / channels);
         }
+        return mono;
+    }
 
-        @Override
-        public void appendSamples(int channel, float[] samples) {
-            int pos = bitPosition[channel];
-            int needed = pos + samples.length;
-            if (needed > buffer.length) {
-                buffer = Arrays.copyOf(buffer, Math.max(needed, buffer.length * 2));
-            }
-            for (float s : samples) {
-                buffer[pos++] = (short) Math.clamp(s, -32767.0f, 32767.0f);
-            }
-            bitPosition[channel] = pos;
-        }
-
-        @Override
-        public void write_buffer(int val) {}
-
-        @Override
-        public void close() {}
-
-        @Override
-        public void clear_buffer() {}
-
-        @Override
-        public void set_stop_flag() {}
-
-        short[] getSamples() {
-            return Arrays.copyOf(buffer, bitPosition[0] + bitPosition[1]);
-        }
-
-        void reset() {
-            bitPosition[0] = 0;
-            bitPosition[1] = 0;
-        }
+    private record WavInfo(int channels, int sampleRate, int bitsPerSample, int dataOffset, int dataLength) {
     }
 }

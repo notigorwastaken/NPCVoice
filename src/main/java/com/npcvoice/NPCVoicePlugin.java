@@ -111,6 +111,7 @@ public final class NPCVoicePlugin extends JavaPlugin implements VoicechatPlugin 
             audioFileManager.clearCache();
             audioFileManager.scanFiles();
         }
+        if (s2sManager != null) s2sManager.reload();
     }
 
     @Override

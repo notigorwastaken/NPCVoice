@@ -35,6 +35,8 @@ public final class ConfigManager {
     private boolean debug;
     private boolean speakingIconEnabled;
     private String speakingIcon;
+    private int httpConnectTimeoutMs;
+    private int httpReadTimeoutMs;
 
     private String piperExecutable;
     private String piperModel;
@@ -43,6 +45,7 @@ public final class ConfigManager {
     private String elevenLabsApiKey;
     private String elevenLabsModel;
     private String elevenLabsApiUrl;
+    private String elevenLabsVoice;
 
     private String openaiApiKey;
     private String openaiModel;
@@ -116,18 +119,20 @@ public final class ConfigManager {
     }
 
     private void loadSettings() {
-        ttsProvider = config.getString("tts.provider", "piper");
+        ttsProvider = nonBlank(config.getString("tts.provider"), "piper");
         ttsStreaming = config.getBoolean("tts.streaming", true);
-        defaultVoice = config.getString("voices.default", "narrator");
-        voiceChatDistance = config.getInt("voicechat.distance", 20);
+        defaultVoice = nonBlank(config.getString("voices.default"), "narrator");
+        voiceChatDistance = Math.max(1, config.getInt("voicechat.distance", 20));
         voiceChatVolume = Math.clamp(config.getDouble("voicechat.volume", 1.0), 0.0, 1.0);
         cacheEnabled = config.getBoolean("cache.enabled", true);
-        cacheMaxSizeMb = config.getInt("cache.max_size_mb", 500);
-        defaultCooldown = config.getInt("dialogue.default_cooldown", 3);
-        defaultApproachRadius = config.getInt("dialogue.default_approach_radius", 6);
+        cacheMaxSizeMb = Math.max(0, config.getInt("cache.max_size_mb", 500));
+        defaultCooldown = Math.max(0, config.getInt("dialogue.default_cooldown", 3));
+        defaultApproachRadius = Math.max(0, config.getInt("dialogue.default_approach_radius", 6));
         debug = config.getBoolean("debug", false);
         speakingIconEnabled = config.getBoolean("nameplate.speaking_icon.enabled", true);
         speakingIcon = config.getString("nameplate.speaking_icon.icon", "🗨");
+        httpConnectTimeoutMs = Math.clamp(config.getInt("network.connect_timeout_ms", 10000), 1000, 120000);
+        httpReadTimeoutMs = Math.clamp(config.getInt("network.read_timeout_ms", 60000), 1000, 300000);
 
         piperExecutable = config.getString("tts.piper.executable", "piper");
         piperModel = config.getString("tts.piper.model", "en_US-lessac-medium");
@@ -137,6 +142,7 @@ public final class ConfigManager {
         elevenLabsApiKey = config.getString("tts.elevenlabs.api_key", "");
         elevenLabsModel = config.getString("tts.elevenlabs.model", "eleven_multilingual_v2");
         elevenLabsApiUrl = config.getString("tts.elevenlabs.api_url", "https://api.elevenlabs.io/v1/text-to-speech");
+        elevenLabsVoice = config.getString("tts.elevenlabs.voice", "");
 
         openaiApiKey = config.getString("tts.openai.api_key", "");
         openaiModel = config.getString("tts.openai.model", "tts-1");
@@ -173,11 +179,15 @@ public final class ConfigManager {
         sttGoogleLanguageCode = config.getString("stt.google.language_code", "en-US");
 
         s2sEnabled = config.getBoolean("speak_to_speak.enabled", false);
-        s2sRadius = config.getInt("speak_to_speak.radius", 8);
-        s2sCooldown = config.getInt("speak_to_speak.cooldown", 10);
-        s2sMaxAudioMs = config.getInt("speak_to_speak.max_audio_ms", 10000);
-        s2sMinSpeechMs = config.getInt("speak_to_speak.min_speech_ms", 700);
-        s2sSilenceMs = config.getInt("speak_to_speak.silence_ms", 400);
+        s2sRadius = Math.max(0, config.getInt("speak_to_speak.radius", 8));
+        s2sCooldown = Math.max(0, config.getInt("speak_to_speak.cooldown", 10));
+        s2sMaxAudioMs = Math.clamp(config.getInt("speak_to_speak.max_audio_ms", 10000), 1000, 120000);
+        s2sMinSpeechMs = Math.clamp(config.getInt("speak_to_speak.min_speech_ms", 700), 0, s2sMaxAudioMs);
+        s2sSilenceMs = Math.clamp(config.getInt("speak_to_speak.silence_ms", 400), 50, s2sMaxAudioMs);
+    }
+
+    private static String nonBlank(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value.trim();
     }
 
     private void loadNpcs() {
@@ -187,6 +197,11 @@ public final class ConfigManager {
 
         for (String key : npcsSection.getKeys(false)) {
             NPCConfig npcConfig = NPCConfig.fromConfig(npcsSection.getConfigurationSection(key), key);
+            if (npcConfig == null) {
+                plugin.getLogger().warning("Ignoring invalid NPC configuration at npcs." + key
+                        + ": expected a configuration section.");
+                continue;
+            }
             npcConfigs.put(key, npcConfig);
         }
     }
@@ -197,13 +212,43 @@ public final class ConfigManager {
         if (presetsSection == null) return;
 
         for (String key : presetsSection.getKeys(false)) {
-            voicePresets.put(key, presetsSection.getString(key));
+            String voiceId = presetsSection.getString(key);
+            if (voiceId == null || voiceId.isBlank()) {
+                plugin.getLogger().warning("Ignoring empty voice preset: " + key);
+                continue;
+            }
+            voicePresets.put(key, voiceId.trim());
         }
     }
 
     public String resolveVoiceId(String voiceName) {
-        if (voiceName == null) return defaultVoice;
-        return voicePresets.getOrDefault(voiceName, voiceName);
+        return resolveVoiceId(voiceName, ttsProvider);
+    }
+
+    public String resolveVoiceId(String voiceName, String provider) {
+        if (voiceName == null || voiceName.isBlank() || voiceName.equals(defaultVoice)) {
+            String providerDefault = providerDefaultVoice(provider);
+            if (providerDefault != null && !providerDefault.isBlank()) {
+                return providerDefault.trim();
+            }
+            voiceName = defaultVoice;
+        }
+        String trimmed = voiceName.trim();
+        return voicePresets.getOrDefault(trimmed, trimmed);
+    }
+
+    private String providerDefaultVoice(String provider) {
+        if (provider == null) return null;
+        return switch (provider.toLowerCase()) {
+            case "piper" -> piperModel;
+            case "elevenlabs" -> elevenLabsVoice;
+            case "openai" -> openaiVoice;
+            case "edgetts" -> edgeTtsVoice;
+            case "google" -> googleVoice;
+            case "azure" -> azureVoice;
+            case "gtts" -> gttsLang;
+            default -> null;
+        };
     }
 
     public String ttsProvider() { return ttsProvider; }
@@ -222,6 +267,8 @@ public final class ConfigManager {
     public void toggleDebug() { this.debug = !this.debug; }
     public boolean speakingIconEnabled() { return speakingIconEnabled; }
     public String speakingIcon() { return speakingIcon; }
+    public int httpConnectTimeoutMs() { return httpConnectTimeoutMs; }
+    public int httpReadTimeoutMs() { return httpReadTimeoutMs; }
 
     public String piperExecutable() { return piperExecutable; }
     public String piperModel() { return piperModel; }
@@ -230,6 +277,7 @@ public final class ConfigManager {
     public String elevenLabsApiKey() { return elevenLabsApiKey; }
     public String elevenLabsModel() { return elevenLabsModel; }
     public String elevenLabsApiUrl() { return elevenLabsApiUrl; }
+    public String elevenLabsVoice() { return elevenLabsVoice; }
 
     public String openaiApiKey() { return openaiApiKey; }
     public String openaiModel() { return openaiModel; }
@@ -482,8 +530,8 @@ public final class ConfigManager {
             if (section == null) return null;
 
             boolean random = section.getBoolean("random", false);
-            int cooldown = section.getInt("cooldown", 3);
-            int radius = section.getInt("radius", 6);
+            int cooldown = Math.max(-1, section.getInt("cooldown", -1));
+            int radius = Math.max(-1, section.getInt("radius", -1));
             List<String> speech = section.getStringList("speech");
 
             return new SpeechConfig(type, random, cooldown, radius, speech);

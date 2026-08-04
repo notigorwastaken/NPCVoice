@@ -2,6 +2,7 @@ package com.npcvoice.util;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.Objects;
 
 /**
  * Writes 16-bit PCM samples into a RIFF/WAVE container.
@@ -12,7 +13,15 @@ public final class WavWriter {
     }
 
     public static byte[] toWavBytes(short[] pcm, int sampleRate, int channels) {
-        int dataSize = pcm.length * 2;
+        Objects.requireNonNull(pcm, "pcm");
+        if (sampleRate <= 0) throw new IllegalArgumentException("sampleRate must be positive");
+        if (channels <= 0) throw new IllegalArgumentException("channels must be positive");
+
+        long dataSizeLong = (long) pcm.length * 2;
+        if (dataSizeLong > Integer.MAX_VALUE - 44L) {
+            throw new IllegalArgumentException("PCM data is too large for an in-memory WAV file");
+        }
+        int dataSize = (int) dataSizeLong;
         ByteBuffer buffer = ByteBuffer.allocate(44 + dataSize).order(ByteOrder.LITTLE_ENDIAN);
 
         buffer.put(new byte[]{'R', 'I', 'F', 'F'});

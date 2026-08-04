@@ -35,7 +35,12 @@ public final class HttpChunkIterator implements Iterator<byte[]> {
         }
         this.in = input;
         this.buffer = new byte[CHUNK_SIZE];
-        this.pending = in != null ? readNext() : null;
+        if (in == null) {
+            conn.disconnect();
+            this.pending = null;
+        } else {
+            this.pending = readNext();
+        }
     }
 
     @Override
@@ -67,9 +72,11 @@ public final class HttpChunkIterator implements Iterator<byte[]> {
     }
 
     private void close() {
-        try {
-            in.close();
-        } catch (IOException ignored) {
+        if (in != null) {
+            try {
+                in.close();
+            } catch (IOException ignored) {
+            }
         }
         conn.disconnect();
     }

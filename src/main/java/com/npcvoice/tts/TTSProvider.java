@@ -10,6 +10,11 @@ public interface TTSProvider {
 
     boolean isAvailable();
 
+    /** Identifies provider settings that affect generated audio for cache invalidation. */
+    default @NotNull String cacheKey() {
+        return name();
+    }
+
     default boolean supportsStreaming() {
         return false;
     }

@@ -1,6 +1,6 @@
 plugins {
     java
-    id("com.gradleup.shadow") version "8.3.5"
+    id("com.gradleup.shadow") version "8.3.11"
 }
 
 group = "com.npcvoice"
@@ -38,6 +38,9 @@ dependencies {
     compileOnly("net.kyori:adventure-text-minimessage:4.17.0")
     implementation("org.jetbrains:annotations:24.1.0")
     implementation("javazoom:jlayer:1.0.1")
+
+    testImplementation(platform("org.junit:junit-bom:5.11.4"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
 }
 
 tasks {
@@ -61,5 +64,9 @@ tasks {
 
     build {
         dependsOn(shadowJar)
+    }
+
+    test {
+        useJUnitPlatform()
     }
 }

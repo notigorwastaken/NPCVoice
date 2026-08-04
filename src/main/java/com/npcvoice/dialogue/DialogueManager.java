@@ -14,7 +14,6 @@ import org.jetbrains.annotations.NotNull;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.logging.Level;
 
 public final class DialogueManager {
 
@@ -37,7 +36,10 @@ public final class DialogueManager {
         if (npcConfig == null) return;
 
         npcConfig.click().ifPresent(clickConfig -> {
-            if (isOnCooldown(npc, "click", clickConfig.cooldown())) return;
+            int cooldown = clickConfig.cooldown() >= 0
+                    ? clickConfig.cooldown()
+                    : configManager.defaultCooldown();
+            if (isOnCooldown(npc, "click", cooldown)) return;
             playSpeech(npc, player, clickConfig, npcConfig.voice().orElse(null));
             setCooldown(npc, "click");
         });
@@ -48,7 +50,10 @@ public final class DialogueManager {
         if (npcConfig == null) return;
 
         npcConfig.approach().ifPresent(approachConfig -> {
-            if (isOnCooldown(npc, "approach", approachConfig.cooldown())) return;
+            int cooldown = approachConfig.cooldown() >= 0
+                    ? approachConfig.cooldown()
+                    : configManager.defaultCooldown();
+            if (isOnCooldown(npc, "approach", cooldown)) return;
             playSpeech(npc, player, approachConfig, npcConfig.voice().orElse(null));
             setCooldown(npc, "approach");
         });
@@ -68,22 +73,15 @@ public final class DialogueManager {
             session.incrementSpeechIndex();
         }
 
-        if (plugin.isEnabled()) {
-            plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
-                try {
-                    if (selectedText.startsWith("@")) {
-                        String fileName = selectedText.substring(1);
-                        voiceManager.playFile(npc, fileName).join();
-                    } else {
-                        String processedText = placeholderUtil.processPlaceholders(player, selectedText);
-                        String resolvedVoice = voice != null ? voice : configManager.defaultVoice();
-                        voiceManager.speak(npc, processedText, resolvedVoice).join();
-                    }
-                } catch (Exception e) {
-                    plugin.getLogger().log(Level.WARNING, "Failed to play dialogue for NPC " + npc.getName(), e);
-                }
-            });
+        if (!plugin.isEnabled()) return;
+        if (selectedText.startsWith("@")) {
+            voiceManager.playFile(npc, selectedText.substring(1));
+            return;
         }
+
+        String processedText = placeholderUtil.processPlaceholders(player, selectedText);
+        String resolvedVoice = voice != null ? voice : configManager.defaultVoice();
+        voiceManager.speak(npc, processedText, resolvedVoice);
     }
 
     private NPCConfig findNpcConfig(NPC npc) {
